@@ -4,7 +4,7 @@
 
 **Generate your Agentic CacheCatch Report now:** [cachecatch.spielos.xyz](https://cachecatch.spielos.xyz/#heroCta)
 
-Cachecatch is a local CLI that audits AI traces, finds prompt-cache breakers, estimates recoverable cache spend, and gives route-specific fixes.
+Cachecatch is a local CLI that audits agentic AI traces, finds prompt-cache breakers, estimates recoverable cache spend, and gives route-specific fixes.
 
 Prompt cache leaks matter because stable instructions, tools, examples, and policies can be charged like fresh input whenever request-specific data appears too early in the prompt. That shows up as low cache-read tokens, higher latency, and avoidable model spend.
 
@@ -31,7 +31,7 @@ Audit local IDE agent sessions from Claude Code, Codex, and OpenCode without an 
 npx cachecatch@latest audit local --window 7d
 ```
 
-## Real Audit
+## Platform Tracing Audit
 
 Audit a LangSmith project:
 
