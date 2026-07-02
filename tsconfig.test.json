@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.cli.json",
+  "compilerOptions": {
+    "outDir": "./dist-test",
+    "rootDir": "./",
+    "noEmit": false,
+    "allowImportingTsExtensions": false
+  },
+  "include": [
+    "bin/index.ts",
+    "src/**/*.ts",
+    "lib/cachecatch/sample-data.ts",
+    "lib/cachecatch/types.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-test",
+    "app",
+    "components"
+  ]
+}

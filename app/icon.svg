@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="CACHECATCH">
+  <rect width="128" height="128" rx="10" fill="#050605"/>
+  <rect x="9" y="9" width="110" height="110" rx="8" fill="none" stroke="#76f79c" stroke-width="3"/>
+  <g fill="#f4faf5">
+    <rect x="23" y="35" width="6" height="6"/><rect x="31" y="35" width="6" height="6"/><rect x="39" y="35" width="6" height="6"/><rect x="47" y="35" width="6" height="6"/><rect x="55" y="35" width="6" height="6"/>
+    <rect x="23" y="43" width="6" height="6"/><rect x="23" y="51" width="6" height="6"/><rect x="23" y="59" width="6" height="6"/><rect x="23" y="67" width="6" height="6"/><rect x="23" y="75" width="6" height="6"/>
+    <rect x="23" y="83" width="6" height="6"/><rect x="31" y="83" width="6" height="6"/><rect x="39" y="83" width="6" height="6"/><rect x="47" y="83" width="6" height="6"/><rect x="55" y="83" width="6" height="6"/>
+    <rect x="67" y="35" width="6" height="6"/><rect x="75" y="35" width="6" height="6"/><rect x="83" y="35" width="6" height="6"/><rect x="91" y="35" width="6" height="6"/><rect x="99" y="35" width="6" height="6"/>
+    <rect x="67" y="43" width="6" height="6"/><rect x="67" y="51" width="6" height="6"/><rect x="67" y="59" width="6" height="6"/><rect x="67" y="67" width="6" height="6"/><rect x="67" y="75" width="6" height="6"/>
+    <rect x="67" y="83" width="6" height="6"/><rect x="75" y="83" width="6" height="6"/><rect x="83" y="83" width="6" height="6"/><rect x="91" y="83" width="6" height="6"/><rect x="99" y="83" width="6" height="6"/>
+  </g>
+</svg>

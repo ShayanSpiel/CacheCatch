@@ -19,16 +19,32 @@
 
 # production
 /build
+/dist
+/dist-test
+
+# generated Cachecatch reports
+/audit.json
+/cachecatch-report.html
+/*cachecatch*report*.html
+/*cachecatch*report*.json
+/reports/
+
+# local email capture data
+/data/
 
 # misc
 .DS_Store
 *.pem
+opencode.jsonc
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# local npm cache for npx/npm exec in this checkout
+.npm-cache/
 
 # env files (can opt-in for committing if needed)
 .env*
