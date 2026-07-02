@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 
 declare global {
   interface Window {
@@ -15,9 +15,13 @@ const PLATFORMS = [
   { id: "langsmith", label: "LangSmith" },
   { id: "langfuse", label: "Langfuse" },
   { id: "braintrust", label: "Braintrust" },
+  { id: "local", label: "IDE Agents" },
 ] as const
 
 function buildCommand(platform: string) {
+  if (platform === "local") {
+    return `npx cachecatch audit local --window 7d`
+  }
   return `npx cachecatch audit "my-agent-app" --provider ${platform} --window 7d`
 }
 
@@ -25,13 +29,76 @@ function track(event: string, properties?: Record<string, unknown>) {
   window.posthog?.capture?.(event, properties)
 }
 
+const SHARED_DONE_KEY = "cachecatch_captured"
+const STORAGE_KEY_PREFIX = "cachecatch_capture_"
+
+function loadSharedDone(): { done: boolean; email: string; platform: string } {
+  if (typeof window === "undefined") return { done: false, email: "", platform: "local" }
+  try {
+    const raw = localStorage.getItem(SHARED_DONE_KEY)
+    if (!raw) return { done: false, email: "", platform: "local" }
+    const parsed = JSON.parse(raw) as { done?: boolean; email?: string; platform?: string }
+    return { done: !!parsed.done, email: parsed.email || "", platform: parsed.platform || "local" }
+  } catch {
+    return { done: false, email: "", platform: "local" }
+  }
+}
+
+function persistSharedDone(done: boolean, email: string, platform: string) {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(SHARED_DONE_KEY, JSON.stringify({ done, email, platform }))
+  } catch { /* noop */ }
+}
+
+function loadPlatform(id: string): string {
+  if (typeof window === "undefined") return "local"
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${id}_platform`)
+    return raw || "local"
+  } catch {
+    return "local"
+  }
+}
+
+function persistPlatform(id: string, platform: string) {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${id}_platform`, platform)
+  } catch { /* noop */ }
+}
+
 export function EmailCapture({ id }: { id: string }) {
   const [email, setEmail] = useState("")
-  const [state, setState] = useState<"idle" | "submitting" | "done" | "error">("idle")
   const [errMsg, setErrMsg] = useState("")
   const [copied, setCopied] = useState(false)
-  const [platform, setPlatform] = useState("langsmith")
   const [dropdownOpen, setDropdownOpen] = useState(false)
+
+  const [state, setState] = useState<"idle" | "submitting" | "done" | "error">("idle")
+  const [platform, setPlatform] = useState("local")
+
+  useEffect(() => {
+    const shared = loadSharedDone()
+    const persistedPlatform = loadPlatform(id)
+    if (shared.done) {
+      setState("done")
+      setPlatform(shared.platform)
+    } else {
+      setPlatform(persistedPlatform)
+    }
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SHARED_DONE_KEY) {
+        const next = loadSharedDone()
+        if (next.done) {
+          setState("done")
+          setPlatform(next.platform)
+        }
+      }
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [id])
 
   const cliCommand = buildCommand(platform)
 
@@ -63,6 +130,16 @@ export function EmailCapture({ id }: { id: string }) {
       copy()
     }
   }, [id, platform])
+
+  const handlePlatformChange = useCallback((newPlatform: string) => {
+    setPlatform(newPlatform)
+    track("cli_provider_selected", { form_id: id, selected_provider: newPlatform })
+    persistPlatform(id, newPlatform)
+    const sharedState = loadSharedDone()
+    if (sharedState.done) {
+      persistSharedDone(true, sharedState.email, newPlatform)
+    }
+  }, [id])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
@@ -106,6 +183,7 @@ export function EmailCapture({ id }: { id: string }) {
         })
         setState("done")
         setEmail("")
+        persistSharedDone(true, trimmedEmail, platform)
       } catch {
         track("email_capture_failed", {
           form_id: id,
@@ -180,8 +258,7 @@ export function EmailCapture({ id }: { id: string }) {
                     aria-selected={platform === p.id}
                 onMouseDown={(e) => {
                       e.preventDefault()
-                      setPlatform(p.id)
-                      track("cli_provider_selected", { form_id: id, selected_provider: p.id })
+                      handlePlatformChange(p.id)
                       setDropdownOpen(false)
                     }}
                   >

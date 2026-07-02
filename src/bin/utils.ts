@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { Command } from "commander"
 import chalk from "chalk"
-import type { CachecatchReport } from "../types/index.ts"
+import type { CachecatchReport, LocalAgentReport } from "../types/index.ts"
 import { renderHtmlReport } from "../reporting/html-report.ts"
 import {
   renderTerminalReport,
@@ -90,11 +90,41 @@ export function autoSaveJsonReport(report: CachecatchReport): string {
   return outPath
 }
 
+export function writeLocalAgentReportToFile(
+  report: LocalAgentReport,
+  outPath: string
+): string {
+  const abs = resolve(outPath)
+  try {
+    mkdirSync(dirname(abs), { recursive: true })
+    writeFileSync(abs, JSON.stringify(report, null, 2), "utf-8")
+  } catch (e) {
+    throw new Error(
+      `Could not write JSON report to ${abs}: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    )
+  }
+  return abs
+}
+
+export function autoSaveLocalAgentReport(report: LocalAgentReport): string {
+  const reportsDir = resolve(process.cwd(), "reports")
+  mkdirSync(reportsDir, { recursive: true })
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+  const filename = `cachecatch-local-agent-context-audit-${timestamp}.json`
+  const outPath = resolve(reportsDir, filename)
+
+  writeFileSync(outPath, JSON.stringify(report, null, 2), "utf-8")
+  return outPath
+}
+
 /**
  * Find the most recent auto-saved JSON report in the reports directory.
  * Returns the absolute path or null if none found.
  */
-export function findLatestJsonReport(): string | null {
+export function findLatestJsonReport(preferLocal = false): string | null {
   const reportsDir = resolve(process.cwd(), "reports")
   try {
     const files = readdirSync(reportsDir)
@@ -103,16 +133,52 @@ export function findLatestJsonReport(): string | null {
       .map((f: string) => ({
         path: resolve(reportsDir, f),
         mtime: statSync(resolve(reportsDir, f)).mtimeMs,
+        isLocal: f.includes("local-agent-context-audit"),
       }))
       .sort((a: { mtime: number }, b: { mtime: number }) => b.mtime - a.mtime)
 
-    return jsonFiles.length > 0 ? jsonFiles[0].path : null
+    if (jsonFiles.length === 0) return null
+
+    if (preferLocal) {
+      const local = jsonFiles.find((f) => f.isLocal)
+      if (local) return local.path
+    }
+
+    return jsonFiles[0].path
   } catch {
     return null
   }
 }
 
-function sleep(ms: number): Promise<void> {
+/**
+ * Stream text word-by-word (ChatGPT-style typing effect).
+ * Preserves ANSI escape sequences and whitespace.
+ */
+export async function streamWordByWord(text: string, delayMs: number): Promise<void> {
+  const tokens = text.split(/(\s+)/)
+  for (const token of tokens) {
+    process.stdout.write(token)
+    if (token.trim().length > 0) {
+      await sleep(delayMs)
+    }
+  }
+}
+
+/**
+ * Stream text line-by-line (faster than word-by-word, still animated).
+ */
+export async function streamLineByLine(text: string, delayMs: number): Promise<void> {
+  const lines = text.split("\n")
+  for (let i = 0; i < lines.length; i++) {
+    process.stdout.write(lines[i])
+    if (i < lines.length - 1) process.stdout.write("\n")
+    if (lines[i].trim().length > 0) {
+      await sleep(delayMs)
+    }
+  }
+}
+
+export function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
 }
 
@@ -135,16 +201,13 @@ export async function writeTerminalReport(
   const sections = renderTerminalReportSections(report, options)
   const divider = "─".repeat(Math.max(72, Math.min(120, process.stdout.columns || 100)))
 
-  process.stdout.write("\n")
   for (let i = 0; i < sections.length; i++) {
     if (i > 0) {
-      process.stdout.write(`\n\n${chalk.gray(divider)}\n\n`)
+      await streamWordByWord(`\n\n${chalk.gray(divider)}\n\n`, 12)
     }
-    process.stdout.write(sections[i])
+
+    await streamWordByWord(sections[i], 20)
     process.stdout.write("\n")
-    if (i < sections.length - 1) {
-      await sleep(i < 5 ? 260 : 180)
-    }
   }
 }
 

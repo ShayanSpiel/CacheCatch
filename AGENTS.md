@@ -3,8 +3,9 @@
 ## Overview
 
 Cachecatch is a **Prompt CacheOps** tool. It audits LLM-traced runs across
-multiple observability providers (LangSmith, Langfuse, Braintrust), detects
-prompt-cache breakers, estimates wasted spend, and gives exact fixes.
+multiple observability providers (LangSmith, Langfuse, Braintrust) and local
+IDE agent sessions (Claude Code, Codex, OpenCode), detects prompt-cache
+breakers, estimates wasted spend, and gives exact fixes.
 
 It ships as **both** a CLI-first infrastructure tool and a Next.js web
 app. The CLI and the web app share one engine, one set of adapters, and
@@ -23,11 +24,11 @@ one `CachecatchReport` schema.
 
 ```
 src/
-  bin/                # CLI entry point + commands (audit, sample, export, projects, config)
+  bin/                # CLI entry point + commands (audit, sample, export, projects, config, share)
   adapters/           # Provider-specific I/O (langsmith, langfuse, braintrust, mock)
-  engine/             # Provider-agnostic analysis (prefix matcher, detectors, scoring, report builder)
-  reporting/          # Terminal (chalk + boxen), HTML, and X card renderers
-  types/              # Shared interfaces — NormalizedTrace is the canonical shape
+  engine/             # Provider-agnostic analysis + local IDE agent audit
+  reporting/          # Terminal (chalk + boxen), HTML, and cloud/local X card renderers
+  types/              # Shared interfaces — NormalizedTrace and reports are canonical
   util/               # HTTP helpers (fetchWithRetry, dotenv loader, asNumber, etc.)
 
 lib/                  # Legacy web-app shims that re-export from src/
@@ -47,7 +48,8 @@ docs/                 # Product contract, data requirements, future architecture
   The web app and CLI both import from there.
 - **`src/engine/*` must be provider-agnostic** — no LangSmith / Langfuse /
   Braintrust imports allowed. Only `NormalizedTrace` types cross the
-  engine boundary.
+  provider boundary. Local filesystem session scanning belongs in
+  `src/engine/local-agent-audit.ts` and produces a `LocalAgentReport`.
 - **`src/adapters/*` is the only place** that knows about provider HTTP APIs.
 - **Adding a new provider** is a single new file in `src/adapters/` plus a
   line in `src/adapters/index.ts` to register it. The CLI auto-discovers
@@ -56,8 +58,12 @@ docs/                 # Product contract, data requirements, future architecture
   `CachecatchReport` and render it. The web UI lives in `components/`.
 - **Use server components by default** in the web app; client only for forms/interactivity.
 - **Monochrome white theme** for the web UI (no color gradients).
-- **All sample data uses the same `CachecatchReport` type** — no parallel
-  mock schemas.
+- **All cloud trace sample data uses the same `CachecatchReport` type** — no
+  parallel mock schemas. Local IDE agent samples use `LocalAgentReport`.
+- **No persistent web storage** — the landing/API flow must not add auth,
+  database, billing, or server-side report persistence.
+- **Landing favicon** is the single `app/icon.svg` Micro 5-style `CC` mark.
+  Do not add duplicate favicon files under `public/`.
 
 ## CLI vs web app
 
@@ -72,10 +78,11 @@ docs/                 # Product contract, data requirements, future architecture
 ```bash
 npx cachecatch                                  # show quick-start
 npx cachecatch sample                           # demo report, no API key
+npx cachecatch audit local --window 7d          # local Claude Code/Codex/OpenCode audit
 npx cachecatch audit <project> --provider langsmith --window 7d
 npx cachecatch projects --provider langfuse     # list available projects
 npx cachecatch export report.json --format html --out ./report.html
-npx cachecatch share --handle @yourname         # generate X card PNG
+npx cachecatch share --handle @yourname         # generate X card PNG from latest/sample report
 npx cachecatch config set-key langsmith <key>   # persist API key to .env
 ```
 
@@ -93,7 +100,10 @@ npm run cachecatch        # Run the CLI via tsx (no build step)
 
 ## Testing
 
-- **Engine** (`src/engine/__tests__/`) — pure unit tests, no I/O.
+- **Engine** (`src/engine/__tests__/`) — pure cloud trace unit tests, no provider I/O.
+- **Local agent audit** (`src/engine/local-agent-audit.ts`) — scans local
+  Claude Code, Codex, and OpenCode session artifacts. Keep redaction enabled
+  by default and avoid logging transcript content.
 - **Adapters** (`src/adapters/__tests__/adapters.test.ts`) — normalizer unit
   tests, end-to-end mock pipeline.
 - **HTTP plumbing** (`src/adapters/__tests__/http-plumbing.test.ts`) —
@@ -109,4 +119,5 @@ npm run cachecatch        # Run the CLI via tsx (no build step)
 - The web app does the audit server-side; the browser only sees the
   returned `CachecatchReport`.
 - The CLI keeps everything in memory; nothing is persisted unless the
-  user explicitly exports HTML/JSON.
+  user explicitly exports HTML/JSON or the CLI auto-saves a local JSON report
+  under `reports/` after an audit.

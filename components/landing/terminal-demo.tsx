@@ -2,12 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-interface TerminalDemoProps {
+interface TabContent {
   sections: string[]
   prompt: string
 }
 
-export function TerminalDemo({ sections, prompt }: TerminalDemoProps) {
+interface TerminalDemoProps {
+  tabs: Record<string, TabContent>
+  defaultTab?: string
+}
+
+type TabId = string
+
+const TAB_ORDER = ["agents", "langsmith"]
+
+export function TerminalDemo({ tabs, defaultTab = "agents" }: TerminalDemoProps) {
   const shellRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const playedRef = useRef(false)
@@ -15,6 +24,9 @@ export function TerminalDemo({ sections, prompt }: TerminalDemoProps) {
   const [revealedCount, setRevealedCount] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabId>(defaultTab)
+
+  const { sections, prompt } = tabs[activeTab] ?? { sections: [], prompt: "" }
 
   const prefersReducedMotion = useMemo(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
@@ -74,6 +86,13 @@ export function TerminalDemo({ sections, prompt }: TerminalDemoProps) {
   }, [reveal])
 
   useEffect(() => {
+    if (!playedRef.current && sections.length > 0) {
+      const timer = setTimeout(() => reveal(), 60)
+      timersRef.current.push(timer)
+    }
+  }, [activeTab, sections.length, reveal])
+
+  useEffect(() => {
     if (!isGenerating) return
 
     for (const timer of timersRef.current) clearTimeout(timer)
@@ -115,6 +134,17 @@ export function TerminalDemo({ sections, prompt }: TerminalDemoProps) {
 
   const visibleSections = sections.slice(0, revealedCount)
 
+  const handleTabSwitch = useCallback((tabId: TabId) => {
+    if (tabId === activeTab) return
+    for (const timer of timersRef.current) clearTimeout(timer)
+    timersRef.current = []
+    playedRef.current = false
+    setRevealedCount(0)
+    setIsGenerating(false)
+    setIsComplete(false)
+    setActiveTab(tabId)
+  }, [activeTab])
+
   return (
     <div className="terminal-shell" ref={shellRef} tabIndex={0} aria-label="CACHECATCH sample report preview">
       <div className="terminal-bar">
@@ -123,7 +153,20 @@ export function TerminalDemo({ sections, prompt }: TerminalDemoProps) {
           <span className="dot" />
           <span className="dot" />
         </div>
-        <div className="term-title">cachecatch sample report / cli preview</div>
+        <div className="chrome-tab-bar" role="tablist">
+          {TAB_ORDER.map((tabId) => (
+            <button
+              key={tabId}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tabId}
+              className={`chrome-tab ${activeTab === tabId ? "is-active" : ""}`}
+              onClick={() => handleTabSwitch(tabId)}
+            >
+              <span className="chrome-tab-content">{tabId === "agents" ? "Agents Cache Report" : "LangSmith Cache Report"}</span>
+            </button>
+          ))}
+        </div>
         <div className={`term-status ${isComplete ? "is-ready" : isGenerating ? "is-generating" : ""}`} aria-hidden="true">
           {isComplete ? "ready" : isGenerating ? "rendering…" : "idle"}
         </div>
@@ -152,7 +195,7 @@ export function TerminalDemo({ sections, prompt }: TerminalDemoProps) {
           </div>
         </div>
       </div>
-      <div className="terminal-hint">Summarized from the same sample data used by `cachecatch sample`.</div>
+      <div className="terminal-hint">Summarized from sample data used by `cachecatch sample` and `cachecatch audit local`.</div>
     </div>
   )
 }

@@ -17,15 +17,19 @@ import { resolve } from "node:path"
 import { input, confirm } from "@inquirer/prompts"
 import { sampleReport } from "../../../lib/cachecatch/sample-data.ts"
 import { renderXCardHtml } from "../../reporting/x-card.ts"
+import {
+  renderIdeAgentXCardHtml,
+  localAgentReportToIdeCardData,
+} from "../../reporting/x-card-local.ts"
 import { htmlToPng } from "../../reporting/html-to-png.ts"
-import { formatUsd } from "../../reporting/format.ts"
 import { configureColor, fail, withErrorHandling, findLatestJsonReport } from "../utils.ts"
-import type { CachecatchReport } from "../../types/index.ts"
+import type { CachecatchReport, LocalAgentReport } from "../../types/index.ts"
 
 interface ShareFlags {
   handle?: string
   out?: string
   color?: boolean
+  verified?: boolean
 }
 
 function extractHandle(raw: string): string {
@@ -45,7 +49,7 @@ function isInteractive(): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY)
 }
 
-function buildTweetText(_report: CachecatchReport, _handle: string): string {
+function buildTweetText(): string {
   return [
     "Prompt caching is the new prompt engineering.",
     "",
@@ -66,6 +70,30 @@ function buildTweetUrl(tweetText: string): string {
   return `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText)}`
 }
 
+function formatLocalTweetText(report: LocalAgentReport): string {
+  const sessions = Math.round(report.summary.sessionsAnalyzed).toLocaleString("en-US")
+  const tokens = report.summary.totalTokens >= 1_000_000_000
+    ? `${(report.summary.totalTokens / 1_000_000_000).toFixed(2).replace(/\.00$/, "")}B`
+    : report.summary.totalTokens.toLocaleString("en-US")
+  const tools = Math.round(report.summary.toolCalls).toLocaleString("en-US")
+  const subagents = Math.round(report.summary.subagentRuns).toLocaleString("en-US")
+  const cacheRead = report.summary.cacheReadPercent === null
+    ? "not reported"
+    : `${Math.round(report.summary.cacheReadPercent * 100)}%`
+  return [
+    "Ran Cachecatch on my local AI build workflow.",
+    "",
+    `${sessions} agentic sessions`,
+    `${tokens} token activity`,
+    `${tools} tool calls`,
+    `${subagents} subagent runs`,
+    `${cacheRead} observed cache-read profile`,
+    "",
+    "Prompt CacheOps for local agents.",
+    "Try yours: cachecatch.spielos.xyz",
+  ].join("\n")
+}
+
 export function makeShareCommand(): Command {
   const cmd = new Command("share")
     .description(
@@ -74,18 +102,29 @@ export function makeShareCommand(): Command {
     .argument("[input]", "Path to a CachecatchReport JSON file (uses sample data if omitted)")
     .option("--handle <handle>", "X handle (e.g. @ShayanSpiel) — skips interactive prompt")
     .option("-o, --out <path>", "Output PNG path", "./cachecatch-x-share.png")
+    .option("--verified", "Show X Verified badge on the card")
     .option("--no-color", "Disable terminal colors")
     .action(async (inputPath: string | undefined, flags: ShareFlags) => {
       await withErrorHandling(async () => {
         configureColor(flags.color !== false)
 
         // ---- Load report ------------------------------------------------
-        let report: CachecatchReport
+        let report: CachecatchReport | LocalAgentReport
+        let isLocal = false
         if (inputPath) {
           const abs = resolve(inputPath)
           try {
             const text = readFileSync(abs, "utf-8")
-            report = JSON.parse(text) as CachecatchReport
+            const parsed = JSON.parse(text)
+            isLocal = parsed?.reportType === "local-agent-context-audit"
+            if (isLocal) {
+              report = parsed as LocalAgentReport
+            } else {
+              report = parsed as CachecatchReport
+              if (!report.id || !Array.isArray((report as CachecatchReport).routes)) {
+                fail("Input does not look like a CachecatchReport JSON.")
+              }
+            }
           } catch (e) {
             fail(
               `Failed to read report at ${abs}: ${
@@ -93,27 +132,28 @@ export function makeShareCommand(): Command {
               }`
             )
           }
-          if (!report || !report.id || !Array.isArray(report.routes)) {
-            fail("Input does not look like a CachecatchReport JSON.")
-          }
         } else {
           // Try to find the latest auto-saved report
-          const latestReportPath = findLatestJsonReport()
+          const latestReportPath = findLatestJsonReport(true)
           if (latestReportPath) {
             try {
               const text = readFileSync(latestReportPath, "utf-8")
-              report = JSON.parse(text) as CachecatchReport
+              const parsed = JSON.parse(text)
+              isLocal = parsed?.reportType === "local-agent-context-audit"
+              report = parsed
               process.stdout.write(
                 chalk.gray(`\n✓ Using latest report: ${latestReportPath}\n`)
               )
             } catch {
               report = sampleReport
+              isLocal = false
               process.stdout.write(
                 chalk.yellow("\n⚠ Could not load latest report, using sample data.\n")
               )
             }
           } else {
             report = sampleReport
+            isLocal = false
             process.stdout.write(
               chalk.gray("\n✓ No saved reports found, using sample data.\n")
             )
@@ -140,8 +180,8 @@ export function makeShareCommand(): Command {
         const handleClean = handle.replace("@", "")
 
         // ---- Verified badge ---------------------------------------------
-        let verified = false
-        if (isInteractive()) {
+        let verified = flags.verified ?? false
+        if (!verified && isInteractive()) {
           verified = await confirm({
             message: "Do you have an X Verified badge?",
             default: false,
@@ -152,37 +192,46 @@ export function makeShareCommand(): Command {
         const avatarUrl = `https://unavatar.io/x/${handleClean}`
 
         // ---- Generate HTML ----------------------------------------------
-        const html = renderXCardHtml(report, {
-          handle,
-          avatarUrl,
-          verified,
-        })
+        const html = isLocal
+          ? renderIdeAgentXCardHtml(
+              localAgentReportToIdeCardData(report as LocalAgentReport, {
+                handle,
+                avatarUrl,
+                verified,
+              })
+            )
+          : renderXCardHtml(report as CachecatchReport, {
+              handle,
+              avatarUrl,
+              verified,
+            })
 
         // ---- Convert to PNG ---------------------------------------------
         const outPath = flags.out ?? "./cachecatch-x-share.png"
         const savedPath = await htmlToPng(html, outPath)
 
         // ---- Print result -----------------------------------------------
-        process.stdout.write(
-          chalk.greenBright(`\n\u2714 Card saved to ${savedPath}\n`)
-        )
-
         // ---- Suggested tweet --------------------------------------------
-        const tweetText = buildTweetText(report, handle)
+        const tweetText = isLocal
+          ? formatLocalTweetText(report as LocalAgentReport)
+          : buildTweetText()
         const tweetUrl = buildTweetUrl(tweetText)
 
-        process.stdout.write("\n")
-        process.stdout.write(
-          chalk.whiteBright.bold("Suggested post:\n")
-        )
-        process.stdout.write(chalk.gray("─".repeat(56)) + "\n")
+        process.stdout.write(chalk.greenBright(`\n✔ Generated share banner\n`))
+        process.stdout.write(`${chalk.gray("Banner PNG:")} ${chalk.whiteBright(savedPath)}\n`)
+        process.stdout.write(chalk.gray("Use this file as the image attachment on X.\n"))
+
+        process.stdout.write(`\n${chalk.whiteBright.bold("Suggested X copy")}\n`)
+        process.stdout.write(chalk.gray("─".repeat(64)) + "\n")
         for (const line of tweetText.split("\n")) {
           process.stdout.write(`  ${chalk.whiteBright(line)}\n`)
         }
-        process.stdout.write(chalk.gray("─".repeat(56)) + "\n")
-        process.stdout.write(
-          `\n  ${chalk.cyan("Open X to post:")} ${chalk.underline.cyan(tweetUrl)}\n\n`
-        )
+        process.stdout.write(chalk.gray("─".repeat(64)) + "\n")
+
+        process.stdout.write(`\n${chalk.whiteBright.bold("Post it")}\n`)
+        process.stdout.write(`${chalk.cyanBright("1.")} Open prefilled X post: ${chalk.underline.cyan(tweetUrl)}\n`)
+        process.stdout.write(`${chalk.cyanBright("2.")} Attach the banner PNG above.\n`)
+        process.stdout.write(`${chalk.cyanBright("3.")} Review, post, and ship it.\n\n`)
       })
     })
 

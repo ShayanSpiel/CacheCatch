@@ -26,6 +26,7 @@
     "cachecatch": "npm run build:cli && node dist/index.js",
     "test": "npm run build:cli && tsc -p tsconfig.test.json && node dist-test/src/engine/__tests__/engine.test.js && node dist-test/src/adapters/__tests__/adapters.test.js && node dist-test/src/adapters/__tests__/http-plumbing.test.js && node dist-test/src/bin/__tests__/cli.test.js",
     "test:live": "tsc -p tsconfig.test.json && node dist-test/src/adapters/__tests__/live.test.js",
+    "postinstall": "node scripts/postinstall.mjs",
     "prepublishOnly": "npm run build:cli"
   },
   "dependencies": {

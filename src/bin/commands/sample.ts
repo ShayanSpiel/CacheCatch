@@ -73,11 +73,7 @@ export function makeSampleCommand(): Command {
         }
 
         if (spinner) {
-          spinner.succeed(
-            chalk.greenBright(
-              `Sample ready: ${report.summary.runsAnalyzed} traces, ${report.summary.routesAnalyzed} routes`
-            )
-          )
+          spinner.succeed(chalk.greenBright("⚡ Generating report"))
         }
 
         if (flags.json) {

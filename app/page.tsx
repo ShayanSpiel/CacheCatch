@@ -3,6 +3,7 @@ import Image from "next/image"
 import Script from "next/script"
 import "../components/landing/landing.css"
 import { sampleReport } from "@/lib/cachecatch/sample-data"
+import { sampleLocalReport } from "@/lib/cachecatch/sample-local-data"
 import { EmailCapture } from "@/components/landing/email-capture"
 import { TerminalDemo } from "@/components/landing/terminal-demo"
 import { FallingPattern } from "@/components/ui/falling-pattern"
@@ -22,6 +23,7 @@ import {
   renderExportCommands,
   setTerminalWidth,
 } from "@/src/reporting/terminal-report"
+import { renderLocalAgentTerminalReport } from "@/src/reporting/local-terminal-report"
 import {
   RiBarChartBoxFill,
   RiMoneyDollarCircleFill,
@@ -30,7 +32,8 @@ import {
 } from "@/components/icons/remixicon"
 
 const siteUrl = "https://cachecatch.spielos.xyz"
-const demoPrompt = "npx cachecatch audit \"my-agent-app\" --provider langsmith --window 7d"
+const demoPrompt = "npx cachecatch audit local --window 7d"
+const localPrompt = "npx cachecatch audit local --window 7d"
 
 const demoReportSections = (() => {
   setTerminalWidth(104)
@@ -51,6 +54,12 @@ const demoReportSections = (() => {
   ]
 
   return sections.map((section) => ansiToHtml(section))
+})()
+
+const localReportSections = (() => {
+  setTerminalWidth(104)
+  const text = renderLocalAgentTerminalReport(sampleLocalReport)
+  return text.split("\n\n").filter((s) => s.trim()).map((section) => ansiToHtml(section))
 })()
 
 const proofItems = [
@@ -79,13 +88,13 @@ const proofItems = [
 export const metadata: Metadata = {
   title: "CACHECATCH — Prompt CacheOps for AI Teams",
   description:
-    "CACHECATCH audits LLM traces from LangSmith, Langfuse, and Braintrust; detects prompt-cache breakers, estimates wasted spend, and gives exact prompt-layout fixes.",
+    "CACHECATCH audits LLM traces from LangSmith, Langfuse, and Braintrust — plus local IDE agent sessions from Claude Code, Codex, and OpenCode. Detects prompt-cache breakers, estimates wasted spend, and gives exact prompt-layout fixes.",
   robots: "index, follow, max-image-preview:large",
   metadataBase: new URL(siteUrl),
   openGraph: {
     type: "website",
     title: "CACHECATCH — Find the token that kills cache",
-    description: "Prompt-cache reports for AI teams running repeated agentic LLM workflows.",
+    description: "Prompt-cache reports for AI teams — from cloud traces to local IDE agent sessions.",
     url: siteUrl,
     siteName: "CACHECATCH",
     images: [{ url: "/landing/og.png", width: 1731, height: 909, alt: "CACHECATCH prompt-cache report preview" }],
@@ -93,7 +102,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "CACHECATCH — Find the token that kills cache",
-    description: "Audit AI traces, detect prompt-cache breakers, and get exact fixes.",
+    description: "Audit AI traces and local IDE agent sessions, detect prompt-cache breakers, and get exact fixes.",
     images: ["/landing/og.png"],
   },
   other: {
@@ -154,7 +163,7 @@ export default function Landing() {
               <span className="l-green">that kills cache.</span>
             </h1>
             <p className="subtitle">
-              CACHECATCH turns traced runs into a cache-loss report: exact divergence, wasted spend, and the prompt fix your team should ship first.
+              Whether you trace through LangSmith or run agents directly in your IDE — CACHECATCH turns runs and sessions into a cache-loss report: exact divergence, wasted spend, and the prompt fix your team should ship first.
             </p>
 
             <div className="provider-row" aria-label="Supported platforms">
@@ -169,6 +178,26 @@ export default function Landing() {
               <span className="provider-pill">
                 <Image className="provider-icon provider-icon-braintrust" src="/landing/icons/braintrust.svg" alt="" width={18} height={18} />
                 Braintrust
+              </span>
+              <span className="provider-pill provider-pill-agents" aria-label="Local agents: Claude Code, Codex, OpenCode">
+                <Image className="provider-icon provider-icon-claude" src="/landing/icons/claude.svg" alt="" width={18} height={18} />
+                <Image className="provider-icon provider-icon-codex" src="/landing/icons/codex.svg" alt="" width={18} height={18} />
+                <Image className="provider-icon provider-icon-opencode" src="/landing/icons/opencode.svg" alt="" width={18} height={18} />
+                <span className="provider-pill-agents-label">Local Agents</span>
+                <span className="provider-tooltip">
+                  <span className="provider-tooltip-row">
+                    <Image className="provider-tooltip-icon" src="/landing/icons/claude.svg" alt="" width={14} height={14} />
+                    Claude Code
+                  </span>
+                  <span className="provider-tooltip-row">
+                    <Image className="provider-tooltip-icon" src="/landing/icons/codex.svg" alt="" width={14} height={14} />
+                    Codex
+                  </span>
+                  <span className="provider-tooltip-row">
+                    <Image className="provider-tooltip-icon" src="/landing/icons/opencode.svg" alt="" width={14} height={14} />
+                    OpenCode
+                  </span>
+                </span>
               </span>
             </div>
 
@@ -192,11 +221,48 @@ export default function Landing() {
                 <span className="l-green">engineers can act on.</span>
               </h2>
               <p className="section-copy">
-                A fast CLI report that summarizes the latest sample audit: recoverable loss, the top leaking routes, the exact prefix break, and the prompt layout to ship next.
+                A fast CLI report that summarizes a sample audit — recoverable loss, the top leaking routes, the exact prefix break, and the prompt layout to ship next. Works with cloud traces and local IDE agent sessions alike.
               </p>
             </div>
 
-            <TerminalDemo sections={demoReportSections} prompt={demoPrompt} />
+            <TerminalDemo
+              tabs={{
+                agents: { sections: localReportSections, prompt: localPrompt },
+                langsmith: { sections: demoReportSections, prompt: demoPrompt },
+              }}
+              defaultTab="agents"
+            />
+          </div>
+        </section>
+
+        <section id="banner" aria-labelledby="banner-title">
+          <div className="wrap">
+            <div className="section-head">
+              <div className="kicker">Community cache reports</div>
+              <h2 id="banner-title">
+                Show the community<br />
+                <span className="l-green">how efficient your agents are.</span>
+              </h2>
+              <p className="section-copy">
+                Generate your own cache report card and share it on X. Let the community see how well your agentic sessions hit cache — or how much you could save with one prompt fix.
+              </p>
+            </div>
+
+            <div className="banner-preview">
+              <div className="banner-frame">
+                <Image
+                  src="/cachecatch-x-share.png"
+                  alt="Sample CacheCatch X report card showing a cache leak score and recoverable savings"
+                  width={1024}
+                  height={732}
+                  className="banner-image"
+                  priority
+                />
+              </div>
+              <div className="banner-cta">
+                <EmailCapture id="bannerCta" />
+              </div>
+            </div>
           </div>
         </section>
 
@@ -209,7 +275,7 @@ export default function Landing() {
                 <span className="l-green">Your prompt order can still break it.</span>
               </h2>
               <p className="section-copy">
-                OpenAI and Anthropic reward stable prefixes. CACHECATCH shows exactly where your prompt stops being cacheable and what that costs.
+                OpenAI and Anthropic reward stable prefixes — whether you call them from cloud traces or local IDE agents. CACHECATCH shows exactly where your prompt stops being cacheable and what that costs.
               </p>
             </div>
 
@@ -242,7 +308,7 @@ export default function Landing() {
                 <span className="l-green">after tracing.</span>
               </h2>
               <p className="section-copy">
-                Tracing tools show runs, latency, token usage, and cost. CACHECATCH turns those traces into the cache diagnosis your team can act on immediately.
+                Tracing tools show runs, latency, token usage, and cost. Local agents generate sessions but leave cache efficiency unseen. CACHECATCH turns both into the cache diagnosis your team can act on immediately.
               </p>
             </div>
 
@@ -300,13 +366,13 @@ export default function Landing() {
         <section id="cta" aria-labelledby="cta-title">
           <div className="wrap">
             <div className="final-panel">
-              <div className="kicker">Run the local audit</div>
+              <div className="kicker">Run the audit</div>
               <h2 id="cta-title">
                 Stop paying full price<br />
                 <span className="l-green">for reusable context.</span>
               </h2>
               <p className="section-copy">
-                Drop your email, grab the CLI, and run the audit on your next prompt in minutes.
+                Drop your email, grab the CLI, and run the audit on your local agent sessions or cloud traces in minutes.
               </p>
               <EmailCapture id="bottomCta" />
             </div>

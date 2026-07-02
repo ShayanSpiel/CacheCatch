@@ -16,8 +16,9 @@ import chalk from "chalk"
 import ora from "ora"
 import clipboardy from "clipboardy"
 import { getAdapter, ADAPTERS } from "../../adapters/index.ts"
-import { buildReport } from "../../engine/index.ts"
+import { buildLocalAgentAudit, buildReport } from "../../engine/index.ts"
 import {
+  renderLocalAgentTerminalReport,
   renderCompactSummary,
   setTerminalWidth,
 } from "../../reporting/index.ts"
@@ -31,6 +32,9 @@ import {
   fail,
   withErrorHandling,
   autoSaveJsonReport,
+  autoSaveLocalAgentReport,
+  writeLocalAgentReportToFile,
+  streamWordByWord,
 } from "../utils.ts"
 import { resolveApiKey, NonInteractiveError } from "../prompts.ts"
 import { promptForProject } from "../prompts.ts"
@@ -39,19 +43,23 @@ import { loadDotenv } from "../../util/http.ts"
 
 interface AuditFlags {
   provider: Provider
-  project: string
+  project?: string
   window: string
   key?: string
   baseUrl?: string
   limit?: string
   out?: string
   format?: "html" | "json"
-  json?: boolean
+  json?: boolean | string
+  redact?: boolean
   compact?: boolean
   full?: boolean
   explainMath?: boolean
   showAgentPrompt?: boolean
   instant?: boolean
+  debug?: boolean
+  verbose?: boolean
+  debugSample?: string
   yes?: boolean
   copy?: boolean
   noClear?: boolean
@@ -110,18 +118,24 @@ export function makeAuditCommand(): Command {
     )
     .argument("[project]", "Project name, ID, or LangSmith URL")
     .option("-p, --provider <provider>", "Provider: langsmith | langfuse | braintrust", "langsmith")
+    .option("--project <path>", "Project path for local audits")
     .option("-w, --window <window>", "Time window: 24h | 7d | 30d | 1y", "7d")
     .option("-k, --key <key>", "API key (or use env vars)")
     .option("--base-url <url>", "Override provider base URL (self-hosted / EU region)")
     .option("-l, --limit <n>", "Max traces to fetch (1-10000)", "300")
     .option("-o, --out <path>", "Write report to file")
     .option("-f, --format <fmt>", "Output format: html | json", "html")
-    .option("--json", "Print raw JSON to stdout (no terminal report)")
+    .option("--json [path]", "Print raw JSON to stdout, or write local audit JSON to a path")
+    .option("--redact", "Redact sensitive local transcript content before analysis", true)
+    .option("--no-redact", "Disable redaction for local transcript analysis")
     .option("--compact", "Print compact summary only")
     .option("--full", "Show all route diagnostics and the full agent repair prompt")
     .option("--explain-math", "Show full calculation details")
     .option("--show-agent-prompt", "Show the full agent repair prompt")
     .option("--instant", "Print the full report immediately instead of streaming sections")
+    .option("--debug", "Show local audit discovery and parser diagnostics")
+    .option("--verbose", "Show local audit discovery and parser diagnostics")
+    .option("--debug-sample <n>", "Number of local candidate diagnostics to show per provider", "20")
     .option("-c, --copy", "Copy the fix plan JSON to the system clipboard")
     .option("--no-clear", "Skip the initial screen clear")
     .option("--no-color", "Disable terminal colors")
@@ -149,6 +163,40 @@ export function makeAuditCommand(): Command {
         }
 
         const window = coerceWindow(flags.window)
+
+        if (projectArg?.trim() === "local") {
+          process.stderr.write(chalk.dim("Scanning local agent sessions...\n"))
+
+          const report = buildLocalAgentAudit({
+            window,
+            project: flags.project,
+            redact: flags.redact !== false,
+            debugSample: flags.debugSample ? coerceLimit(flags.debugSample) : 20,
+          })
+
+          const jsonPath = typeof flags.json === "string" ? flags.json : flags.out
+          const savedPath = jsonPath
+            ? writeLocalAgentReportToFile(report, jsonPath)
+            : autoSaveLocalAgentReport(report)
+
+          if (flags.json === true) {
+            process.stdout.write(JSON.stringify(report, null, 2) + "\n")
+          } else {
+            process.stderr.write(chalk.green("✔ ") + chalk.greenBright("⚡ Generating report\n"))
+            const text = renderLocalAgentTerminalReport(report, {
+              debug: Boolean(flags.debug || flags.verbose),
+            })
+            if (process.stdout.isTTY && !process.env.CI) {
+              await streamWordByWord(text, 20)
+              process.stdout.write("\n")
+            } else {
+              process.stdout.write(text)
+            }
+            process.stdout.write(chalk.gray(`\n✓ JSON report saved to ${savedPath}\n`))
+          }
+          return
+        }
+
         const limit = flags.limit ? coerceLimit(flags.limit) : 300
         const adapter = getAdapter(provider)
         let project = projectArg?.trim()
@@ -240,23 +288,11 @@ export function makeAuditCommand(): Command {
           source: provider,
         })
 
-        // ---- Auto-save JSON report to reports folder ----------------
-        const autoSavedPath = autoSaveJsonReport(report)
-        process.stdout.write(chalk.gray(`\n✓ Auto-saved JSON report to ${autoSavedPath}\n`))
-
+        // ---- Render (spinner transitions directly into streaming) ----
         if (spinner) {
-          spinner.succeed(
-            chalk.greenBright(
-              `Analyzed ${report.summary.runsAnalyzed} trace${
-                report.summary.runsAnalyzed === 1 ? "" : "s"
-              } across ${report.summary.routesAnalyzed} route${
-                report.summary.routesAnalyzed === 1 ? "" : "s"
-              }`
-            )
-          )
+          spinner.succeed(chalk.greenBright("⚡ Generating report"))
         }
 
-        // ---- Render --------------------------------------------------
         let exportedTo: string | undefined
         if (flags.json) {
           process.stdout.write(JSON.stringify(report, null, 2) + "\n")
@@ -273,6 +309,9 @@ export function makeAuditCommand(): Command {
             !flags.instant
           )
         }
+
+        // ---- Auto-save JSON report to reports folder ----------------
+        const autoSavedPath = autoSaveJsonReport(report)
 
         // ---- Optional exports ---------------------------------------
         if (flags.out) {

@@ -1,5 +1,9 @@
 # Cachecatch
 
+[![Sample Agentic CacheCatch Report banner](public/cachecatch-x-share.png)](https://cachecatch.spielos.xyz/#heroCta)
+
+**Generate your Agentic CacheCatch Report now:** [cachecatch.spielos.xyz](https://cachecatch.spielos.xyz/#heroCta)
+
 Cachecatch is a local CLI that audits AI traces, finds prompt-cache breakers, estimates recoverable cache spend, and gives route-specific fixes.
 
 Prompt cache leaks matter because stable instructions, tools, examples, and policies can be charged like fresh input whenever request-specific data appears too early in the prompt. That shows up as low cache-read tokens, higher latency, and avoidable model spend.
@@ -21,12 +25,26 @@ npx cachecatch@latest sample --explain-math
 npx cachecatch@latest sample --out ./cachecatch-report.html
 ```
 
+Audit local IDE agent sessions from Claude Code, Codex, and OpenCode without an API key:
+
+```bash
+npx cachecatch@latest audit local --window 7d
+```
+
 ## Real Audit
 
 Audit a LangSmith project:
 
 ```bash
 npx cachecatch@latest audit "your-project-name" --provider langsmith --window 7d
+```
+
+Audit local agent sessions on your machine:
+
+```bash
+npx cachecatch@latest audit local --window 7d
+npx cachecatch@latest audit local --window 30d --json ./local-agent-report.json
+npx cachecatch@latest audit local --project /path/to/repo --window 7d
 ```
 
 You can pass the key directly:
@@ -75,12 +93,13 @@ Generate a shareable X card PNG from any report:
 npx cachecatch@latest share --handle @yourname
 ```
 
-This fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. The card shows your cache leak score, recoverable savings, top findings, and a CTA — ready to attach to a post.
+This fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. The card shows cache leak score and recoverable savings for cloud trace reports, or IDE agent session/cache profile metrics for local reports. It includes a CTA and is ready to attach to a post.
 
 Use a saved report:
 
 ```bash
 npx cachecatch@latest share audit.json --handle @yourname -o ./my-card.png
+npx cachecatch@latest share local-agent-report.json --handle @yourname -o ./my-local-card.png
 ```
 
 Non-interactive mode (CI or scripts):
@@ -128,6 +147,8 @@ npx cachecatch@latest projects --provider langsmith
 | `cachecatch sample --json` | Print a raw `CachecatchReport` JSON. |
 | `cachecatch sample --out ./report.html` | Export the sample as HTML. |
 | `cachecatch audit "project" --provider langsmith --window 7d` | Run a live audit. |
+| `cachecatch audit local --window 7d` | Scan local Claude Code, Codex, and OpenCode sessions. |
+| `cachecatch audit local --project /path/to/repo --window 7d` | Restrict local session analysis to one repository path. |
 | `cachecatch audit "project" --json` | Print live audit JSON for automation/export. |
 | `cachecatch projects --provider langsmith` | List projects visible to a provider key. |
 | `cachecatch config set-key langsmith <key>` | Save a provider key to local `.env`. |
@@ -140,6 +161,10 @@ npx cachecatch@latest projects --provider langsmith
 All report commands support `--no-color` for plain terminal output.
 
 ## Troubleshooting
+
+### Vercel deploy returns 404
+
+Cachecatch uses the Next.js App Router and should deploy as a normal Next app. The app config intentionally avoids forced trailing slashes because Vercel project and domain routing can serve `/` and `/report/sample` differently when `trailingSlash` is enabled. If a deployment returns 404, confirm Vercel is building with `npm run build`, the framework preset is Next.js, and the deployed output includes the App Router routes.
 
 ### Missing project
 
@@ -225,13 +250,13 @@ Development scripts:
 src/
   bin/        CLI entry point and commands
   adapters/   LangSmith, Langfuse, Braintrust, and mock provider I/O
-  engine/     Provider-agnostic cache analysis
+  engine/     Provider-agnostic trace analysis plus local IDE session audit
   reporting/  Terminal, HTML, and X card renderers
   types/      Shared CachecatchReport and NormalizedTrace types
   util/       HTTP and environment helpers
 ```
 
-The CLI and web app share the same engine and `CachecatchReport` schema. Provider-specific HTTP code stays in `src/adapters/*`; cache analysis stays provider-agnostic in `src/engine/*`. The X card banner is generated from `src/reporting/x-card.ts` (HTML template) and `src/reporting/html-to-png.ts` (Puppeteer screenshot).
+The CLI and web app share the same engine and `CachecatchReport` schema. Provider-specific HTTP code stays in `src/adapters/*`; cache analysis stays provider-agnostic in `src/engine/*`. Local IDE agent scanning is implemented in `src/engine/local-agent-audit.ts` and produces a `LocalAgentReport`. The X card banners are generated from `src/reporting/x-card.ts` or `src/reporting/x-card-local.ts` (HTML templates) and `src/reporting/html-to-png.ts` (Puppeteer screenshot).
 
 ## License
 

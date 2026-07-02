@@ -9,6 +9,8 @@
 
 export type Provider = "langsmith" | "langfuse" | "braintrust" | "mock" | "sample"
 
+export type LocalAgentProvider = "claude-code" | "codex" | "opencode"
+
 export type AuditWindow = "24h" | "7d" | "30d" | "1y"
 
 export type Confidence = "low" | "medium" | "high"
@@ -233,4 +235,146 @@ export interface AuditOptions {
   json?: boolean
   /** If true, write the HTML report to disk. */
   exportHtml?: string
+}
+
+export interface LocalAgentMoneyRange {
+  low?: number
+  high?: number
+  currency: "USD"
+  label: "estimated"
+}
+
+export interface LocalAgentCacheMissRange {
+  lowPercent: number
+  highPercent: number
+}
+
+export interface LocalAgentFinding {
+  id: string
+  title: string
+  severity: Severity
+  agent?: LocalAgentProvider
+  evidence: string
+  recommendation: string
+}
+
+export interface LocalAgentRecommendation {
+  id: string
+  title: string
+  action: string
+  suggestedMarkdown?: {
+    filename: "AGENTS.md" | "CLAUDE.md"
+    content: string
+  }
+}
+
+export interface LocalAgentModelSummary {
+  rawName: string
+  normalizedName?: string
+  provider?: string
+  sessions: number
+  pricingKnown: boolean
+  pricingConfidence: Confidence
+  note?: string
+}
+
+export interface LocalAgentProjectSummary {
+  path: string
+  sessions: number
+  totalTokens: number
+  cacheReadPercent: number | null
+  modelCostUsd: number | null
+  hasAgentsMd?: boolean
+  hasClaudeMd?: boolean
+  advice: string[]
+}
+
+export interface LocalAgentActivitySummary {
+  toolCalls: number
+  subagentRuns: number
+  topSubagents: Array<{ name: string; sessions: number }>
+}
+
+export interface LocalAgentReport {
+  reportType: "local-agent-context-audit"
+  generatedAt: string
+  window: string
+  summary: {
+    status?: string
+    cacheLeakScore: number | null
+    recoverableCashSaving?: LocalAgentMoneyRange | null
+    estimatedCacheMissRange?: LocalAgentCacheMissRange | null
+    agentsScanned: number
+    sessionsFound: number
+    sessionsInWindow: number
+    sessionsAnalyzed: number
+    totalTokens: number
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cacheReadPercent: number | null
+    modelCostUsd: number | null
+    tokenAccounting: "observed" | "estimated" | "mixed" | "unavailable"
+    toolCalls: number
+    subagentRuns: number
+    modelsDetected: number
+    confidence: Confidence
+    mainFinding: string
+  }
+  agents: Array<{
+    provider: LocalAgentProvider
+    detected: boolean
+    sessionsFound: number
+    sessionsInWindow: number
+    sessionsAnalyzed: number
+    totalTokens: number
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cacheReadPercent: number | null
+    modelCostUsd: number | null
+    tokenAccounting: "observed" | "estimated" | "mixed" | "unavailable"
+    toolCalls: number
+    subagentRuns: number
+    topSubagents: Array<{ name: string; sessions: number }>
+    modelsDetected: string[]
+    cacheLeakScore: number
+    estimatedCacheMissRange?: LocalAgentCacheMissRange
+    recoverableCashSaving?: LocalAgentMoneyRange
+    mainFinding: string
+    findings: LocalAgentFinding[]
+    recommendations: LocalAgentRecommendation[]
+  }>
+  modelsDetected: LocalAgentModelSummary[]
+  projects: LocalAgentProjectSummary[]
+  activity: LocalAgentActivitySummary
+  findings: LocalAgentFinding[]
+  recommendations: LocalAgentRecommendation[]
+  diagnostics: {
+    providers: Array<{
+      provider: string
+      rootPaths: string[]
+      candidatesFound: number
+      candidatesInWindow: number
+      filesAttempted: number
+      parsedSessions: number
+      skippedFiles: number
+      failedFiles: number
+      topFailureReasons: Array<{ reason: string; count: number }>
+      sampleCandidates: Array<{
+        path: string
+        sizeBytes?: number
+        modifiedAt?: string
+        candidateType?: "jsonl" | "json" | "sqlite" | "unknown"
+        parserTried?: string
+        parseStatus: "parsed" | "failed" | "skipped"
+        parseReason?: string
+        topLevelKeys?: string[]
+        eventTypes?: string[]
+      }>
+    }>
+  }
+  pricingDisclaimer: string
 }
