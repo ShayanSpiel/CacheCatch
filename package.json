@@ -1,6 +1,6 @@
 {
   "name": "cachecatch",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Local Prompt CacheOps CLI for auditing AI traces and finding prompt-cache losses.",
   "repository": {
     "type": "git",
