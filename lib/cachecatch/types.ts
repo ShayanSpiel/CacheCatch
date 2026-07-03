@@ -14,6 +14,7 @@ export type {
   Severity,
   Confidence,
   FindingBasis,
+  ReportMode,
   CacheFinding,
   RouteAudit,
   DataQuality,

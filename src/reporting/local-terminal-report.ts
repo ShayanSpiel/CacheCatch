@@ -28,6 +28,54 @@ function fmtCompact(value: number): string {
   return fmtInt(value)
 }
 
+function visibleLength(text: string): number {
+  return text.replace(/\u001b\[[0-9;]*m/g, "").length
+}
+
+function wrapAnsiText(text: string, width: number): string[] {
+  if (width <= 0 || visibleLength(text) <= width) return [text]
+
+  const words = text.split(/(\s+)/)
+  const lines: string[] = []
+  let line = ""
+
+  for (const word of words) {
+    if (word.length === 0) continue
+    const normalized = /^\s+$/.test(word) ? " " : word
+    const candidate = `${line}${normalized}`
+
+    if (visibleLength(candidate.trimEnd()) <= width) {
+      line = candidate
+      continue
+    }
+
+    if (line.trimEnd().length > 0) lines.push(line.trimEnd())
+    line = /^\s+$/.test(word) ? "" : normalized
+  }
+
+  if (line.trimEnd().length > 0) lines.push(line.trimEnd())
+  return lines.length > 0 ? lines : [text]
+}
+
+function terminalWidth(): number {
+  const columns = process.stdout.columns || 110
+  return Math.max(60, Math.min(120, columns))
+}
+
+function reportWidth(): number {
+  return terminalWidth()
+}
+
+function innerBoxWidth(): number {
+  return Math.max(40, reportWidth() - 6)
+}
+
+function clipTitle(title: string, width: number): string {
+  const max = Math.max(12, width - 6)
+  if (visibleLength(title) <= max) return title
+  return `${title.slice(0, Math.max(0, max - 3))}...`
+}
+
 function metric(label: string, value: string, note?: string, width = 26): string {
   return `${chalk.gray(label.padEnd(width))} ${chalk.whiteBright.bold(value)}${note ? chalk.gray(`  ${note}`) : ""}`
 }
@@ -43,13 +91,17 @@ function fmtUsdRange(range: LocalAgentReport["summary"]["recoverableCashSaving"]
 }
 
 function miniBox(title: string, rows: string[], color: "cyan" | "green" | "yellow" | "red" | "gray" = "gray"): string {
-  return boxen(rows.join("\n"), {
-    title,
+  const width = innerBoxWidth()
+  const contentWidth = Math.max(20, width - 4)
+  const wrappedRows = rows.flatMap((row) => row.length === 0 ? [""] : wrapAnsiText(row, contentWidth))
+
+  return boxen(wrappedRows.join("\n"), {
+    title: clipTitle(title, width),
     titleAlignment: "left",
     borderStyle: "round",
     borderColor: color,
     padding: { top: 0, bottom: 0, left: 1, right: 1 },
-    width: Math.max(72, Math.min(104, process.stdout.columns || 100)),
+    width,
   })
 }
 
@@ -283,16 +335,22 @@ function mainSummary(report: LocalAgentReport): string {
 }
 
 function renderSupportShareCard(): string {
-  return boxen([
+  const width = reportWidth()
+  const contentWidth = Math.max(20, width - 4)
+  const rows = [
     `${chalk.whiteBright("Support Cachecatch:")} copy and run ${chalk.cyanBright("npx cachecatch share")} to generate your share banner.`,
     chalk.gray("It will ask for your X handle, make the PNG, and print ready-to-use X copy/link."),
+  ].flatMap((row) => wrapAnsiText(row, contentWidth))
+
+  return boxen([
+    ...rows,
   ].join("\n"), {
     title: `${chalk.redBright("♥")} Support + Share`,
     titleAlignment: "left",
     borderStyle: "round",
     borderColor: "red",
     padding: { top: 0, bottom: 0, left: 1, right: 1 },
-    width: Math.max(84, Math.min(118, process.stdout.columns || 110)),
+    width,
   })
 }
 
@@ -560,13 +618,19 @@ export function renderLocalAgentTerminalReport(
   lines.push(chalk.whiteBright.bold("■ DISCLAIMER"))
   lines.push(chalk.dim(report.pricingDisclaimer))
 
-  const reportBox = boxen(lines.join("\n"), {
+  const width = reportWidth()
+  const contentWidth = Math.max(20, width - 6)
+  const wrappedLines = lines.flatMap((line) =>
+    line.split("\n").flatMap((part) => part.length === 0 ? [""] : wrapAnsiText(part, contentWidth))
+  )
+
+  const reportBox = boxen(wrappedLines.join("\n"), {
     title: " Cachecatch Local ",
     titleAlignment: "left",
     borderStyle: "round",
     borderColor: noParsed ? "yellow" : "cyan",
     padding: { top: 1, bottom: 1, left: 2, right: 2 },
-    width: Math.max(84, Math.min(118, process.stdout.columns || 110)),
+    width,
   })
   return noParsed ? reportBox : `${reportBox}\n\n${renderSupportShareCard()}`
 }

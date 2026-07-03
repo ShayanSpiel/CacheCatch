@@ -401,6 +401,10 @@ export const sampleReport: CachecatchReport = {
     ],
   },
   details: {
+    reportMode: "financial_cache_audit",
+    diagnosisConfidence: "high",
+    moneyConfidence: "high",
+    pricingConfidence: "high",
     targetCacheReadRate: "58-72%",
     projectedMonthlyRuns: 240_000,
     projectionFormula: "56,000 * 30 / 7 = 240,000",
@@ -413,6 +417,8 @@ export const sampleReport: CachecatchReport = {
     blendedUncachedInputCostPerMillion: 8.5,
     blendedCachedReadCostPerMillion: 0.85,
     recoverableDeltaPerMillion: 7.65,
+    pricingBasis:
+      "sample blended enterprise pricing; real audits use exact matched model pricing when available",
     monthlyRecoverableCacheLossPrecise: 15_000.12,
     monthlyRecoverableCacheLossFormula:
       "1,960.8M * $7.65 / 1M = $15,000.12",

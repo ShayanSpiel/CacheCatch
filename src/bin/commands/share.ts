@@ -130,6 +130,7 @@ export function makeShareCommand(): Command {
         // ---- Load report ------------------------------------------------
         let report: CachecatchReport | LocalAgentReport
         let isLocal = false
+        let sourcePath: string | null = null
         if (inputPath) {
           const abs = resolve(inputPath)
           try {
@@ -144,6 +145,7 @@ export function makeShareCommand(): Command {
                 fail("Input does not look like a CachecatchReport JSON.")
               }
             }
+            sourcePath = abs
           } catch (e) {
             fail(
               `Failed to read report at ${abs}: ${
@@ -152,14 +154,15 @@ export function makeShareCommand(): Command {
             )
           }
         } else {
-          // Try to find the latest auto-saved report
-          const latestReportPath = findLatestJsonReport(true)
+          // Try to find the latest auto-saved report (any kind — let type detection pick the renderer)
+          const latestReportPath = findLatestJsonReport(false)
           if (latestReportPath) {
             try {
               const text = readFileSync(latestReportPath, "utf-8")
               const parsed = JSON.parse(text)
               isLocal = parsed?.reportType === "local-agent-context-audit"
               report = parsed
+              sourcePath = latestReportPath
               process.stdout.write(
                 chalk.gray(`\n✓ Using latest report: ${latestReportPath}\n`)
               )
@@ -284,6 +287,15 @@ export function makeShareCommand(): Command {
 
         process.stdout.write(chalk.whiteBright.bold(`\n✔︎ Your banner is generated\n\n`))
         process.stdout.write(`${chalk.whiteBright.bold("▶ PNG Banner")} [⌘ + Click]: ${chalk.underline.cyan(savedPath)}\n`)
+        if (sourcePath) {
+          process.stdout.write(
+            chalk.gray(`  Generated from: ${chalk.cyan(sourcePath)}\n`)
+          )
+        } else {
+          process.stdout.write(
+            chalk.gray(`  Generated from: ${chalk.cyan("sample data (no saved report found)")}\n`)
+          )
+        }
         process.stdout.write(chalk.gray("Use this file as the image attachment on X.\n"))
 
         process.stdout.write(`\n${chalk.whiteBright.bold("Suggested X copy")}\n`)

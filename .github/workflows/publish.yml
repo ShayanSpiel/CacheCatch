@@ -23,9 +23,15 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build:cli
+      - run: npm run typecheck
+
+      - run: npm run lint
 
       - run: npm test
+
+      - run: npm run build:cli
+
+      - run: npm run build:web
 
       - run: npm publish --provenance --access public
         env:

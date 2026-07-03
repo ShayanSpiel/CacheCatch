@@ -108,6 +108,51 @@ function printPostRunSummary(
     )
   )
   lines.push("")
+  lines.push(
+    chalk.whiteBright("  Next: ") +
+      chalk.cyan(
+        `npx --yes cachecatch@latest share --handle @yourname`
+      ) +
+      chalk.gray("  (picks up this report automatically)")
+  )
+  lines.push("")
+  process.stdout.write(lines.join("\n"))
+}
+
+function printLocalPostRunSummary(
+  report: { summary: { sessionsAnalyzed?: number; totalTokens?: number } },
+  autoSavedPath: string
+): void {
+  const lines: string[] = []
+  lines.push("")
+  lines.push(chalk.gray("─".repeat(Math.min(60, process.stdout.columns || 60))))
+  lines.push(chalk.cyanBright.bold("⚡ Local audit complete."))
+  lines.push(
+    chalk.gray(
+      `  → Sessions analyzed: ${chalk.whiteBright(
+        Math.round(report.summary.sessionsAnalyzed ?? 0).toLocaleString("en-US")
+      )}`
+    )
+  )
+  if (autoSavedPath) {
+    lines.push(
+      chalk.gray(`  → Auto-saved JSON: ${chalk.cyan(autoSavedPath)}`)
+    )
+  }
+  lines.push(
+    chalk.gray(
+      `  → Re-run with --window 30d for a wider sample of your agent sessions.`
+    )
+  )
+  lines.push("")
+  lines.push(
+    chalk.whiteBright("  Next: ") +
+      chalk.cyan(
+        `npx --yes cachecatch@latest share --handle @yourname`
+      ) +
+      chalk.gray("  (picks up this report automatically)")
+  )
+  lines.push("")
   process.stdout.write(lines.join("\n"))
 }
 
@@ -142,7 +187,9 @@ export function makeAuditCommand(): Command {
     .option("-y, --yes", "Skip confirmation prompts")
     .action(async (projectArg: string | undefined, flags: AuditFlags) => {
       await withErrorHandling(async () => {
-        configureColor(flags.color !== false)
+        const colorEnabled = flags.color !== false
+        const noColorRequested = !colorEnabled || process.argv.includes("--no-color") || Boolean(process.env.NO_COLOR)
+        configureColor(colorEnabled)
         loadDotenv()
 
         // Make the report responsive to the current terminal width
@@ -192,7 +239,7 @@ export function makeAuditCommand(): Command {
             } else {
               process.stdout.write(text)
             }
-            process.stdout.write(chalk.gray(`\n✓ JSON report saved to ${savedPath}\n`))
+            printLocalPostRunSummary(report, savedPath)
           }
           return
         }
@@ -245,12 +292,12 @@ export function makeAuditCommand(): Command {
         }
 
         // ---- Spinner: fetch + analyze -------------------------------
-        const spinner = flags.json
+        const spinner = flags.json || noColorRequested
           ? null
           : ora({
               text: chalk.cyan(`Connecting to ${adapter.displayName}...`),
               color: "cyan",
-              isEnabled: flags.color !== false,
+              isEnabled: !noColorRequested,
             }).start()
 
         let result

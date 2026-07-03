@@ -8,6 +8,7 @@ import type {
   CachecatchReport,
   CachecatchRouteDiagnostic,
   CacheFinding,
+  Confidence,
   RouteAudit,
 } from "../types/index.ts"
 import { APP_NAME, APP_VERSION, PROVIDER_LABELS, WINDOW_LABELS } from "../engine/constants.ts"
@@ -238,6 +239,29 @@ function telemetryDocsUrl(report: CachecatchReport): string | undefined {
   return report.details?.telemetryDocsUrl
 }
 
+function reportMode(report: CachecatchReport): "financial_cache_audit" | "prefix_diagnostic" {
+  return report.details?.reportMode === "financial_cache_audit"
+    ? "financial_cache_audit"
+    : "prefix_diagnostic"
+}
+
+function isFinancialMode(report: CachecatchReport): boolean {
+  return reportMode(report) === "financial_cache_audit"
+}
+
+function plainConfidence(confidence: Confidence | undefined): string {
+  return (confidence ?? "low").toUpperCase()
+}
+
+function divergenceLabel(route?: CachecatchRouteDiagnostic): string {
+  if (!route) return "unknown"
+  if (route.firstDivergenceChar !== undefined || route.firstDivergenceTokenApproximate) {
+    const char = route.firstDivergenceChar ?? route.firstDivergenceToken * 4
+    return `char ${formatNumber(char)}  approx token ~${formatNumber(route.firstDivergenceToken)}`
+  }
+  return `token ${formatNumber(route.firstDivergenceToken)}`
+}
+
 function routeTableLabel(route: string, width: number): string {
   return truncate(route, Math.max(8, width - 1))
 }
@@ -269,6 +293,8 @@ function diagnosticFromRoute(
     expectedCacheReadRate: expectedRateForRoute(route),
     firstDivergenceToken:
       finding?.firstDivergenceToken ?? route.avgFirstDivergenceToken,
+    firstDivergenceChar: finding?.firstDivergenceChar ?? route.avgFirstDivergenceChar,
+    firstDivergenceTokenApproximate: Boolean(finding?.firstDivergenceChar ?? route.avgFirstDivergenceChar),
     mainIssue: issue.endsWith(".") ? issue : `${issue}.`,
     detectedFields,
     cause: causeForFinding(finding),
@@ -387,6 +413,7 @@ export function renderHeader(report: CachecatchReport): string {
     `${C.muted(padRight("Provider", 12))} ${C.text(sourceLabel(report))}`,
     `${C.muted(padRight("Window", 12))} ${C.text(WINDOW_LABELS[report.window] || report.window)}`,
     `${C.muted(padRight("Runs", 12))} ${C.text(`${formatNumber(report.summary.runsAnalyzed)} traces across ${formatNumber(report.summary.routesAnalyzed)} routes`)}`,
+    `${C.muted(padRight("Mode", 12))} ${C.value(isFinancialMode(report) ? "REPORT MODE: FINANCIAL CACHE AUDIT" : "REPORT MODE: PREFIX DIAGNOSTIC")}`,
     `${C.muted(padRight("Status", 12))} ${C.good("✔ Audit complete")}  ${C.muted("Diagnosis")} ${displayConfidence(report.details?.diagnosisConfidence ?? report.confidence)}  ${C.muted("Money")} ${displayConfidence(report.details?.moneyConfidence ?? report.confidence)}`,
   ]
 
@@ -397,8 +424,63 @@ export function renderHeader(report: CachecatchReport): string {
   return [
     box("CACHECATCH", rows, "green"),
     dimNote(`Reason: ${reason}`),
-    transition("Start with the financial picture, then inspect the prompt layout that causes it."),
+    transition(isFinancialMode(report) ? "Start with the financial picture, then inspect the prompt layout that causes it." : "Start with what the traces can prove, then enable telemetry to turn this into a finance-grade savings report."),
   ].join("\n")
+}
+
+export function renderFinancialHero(report: CachecatchReport): string {
+  const top = firstDiagnostic(report)
+  const lines: string[] = [section("Recoverable Cache Savings"), ""]
+  lines.push(
+    box(
+      "RECOVERABLE CACHE SAVINGS",
+      [
+        `${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)} / month`)}`,
+        "",
+        `${C.muted(padRight("Current cache-read rate", 27))} ${C.badBold(formatPercent(report.summary.observedCacheReadRate))}`,
+        `${C.muted(padRight("Target after fixes", 27))} ${C.good(targetRate(report))}`,
+        `${C.muted(padRight("Missed cache-read tokens", 27))} ${C.value(formatNumber(report.details?.projectedMonthlyMissedReusableTokens ?? report.summary.estimatedCacheOpportunityTokens))}`,
+        `${C.muted(padRight("Top leaking route", 27))} ${C.value(top?.route ?? "none")}`,
+        `${C.muted(padRight("Fastest first fix", 27))} ${C.good(fastestFix(report))}`,
+      ],
+      "red"
+    )
+  )
+  lines.push("")
+  lines.push(callout("→", "Cachecatch found repeated prompt context that is structurally unlikely to hit cache because the prefix changes before stable blocks.", C.evidence))
+  return lines.join("\n")
+}
+
+export function renderDiagnosticHero(report: CachecatchReport): string {
+  const top = firstDiagnostic(report)
+  const reason = !report.dataQuality.hasTokenUsage && !report.dataQuality.hasCacheReadTelemetry
+    ? "Token usage and cached-token telemetry are missing."
+    : !report.dataQuality.hasCacheReadTelemetry
+      ? "Cached-token telemetry is missing."
+      : report.details?.pricingConfidence !== "high"
+        ? "Pricing is not confidently mapped for the observed model set."
+        : "Required finance-grade telemetry is incomplete."
+  const lines: string[] = [section("Savings Not Provable Yet"), ""]
+  lines.push(
+    box(
+      "SAVINGS NOT PROVABLE YET",
+      [
+        `${C.muted("Reason:")} ${reason}`,
+        "",
+        "Cachecatch did find:",
+        `${C.evidence("→")} first divergence at ${divergenceLabel(top)}`,
+        `${C.evidence("→")} dynamic fields before stable prompt blocks`,
+        `${C.evidence("→")} route groups with unstable prefixes`,
+        "",
+        `${C.warn("Priority 0:")} Enable token + cached-token telemetry in ${sourceLabel(report)}.`,
+      ],
+      "yellow"
+    )
+  )
+  lines.push("")
+  lines.push(callout("#", "Money estimate unavailable / low confidence. Prompt structure issue detected. Enable telemetry to calculate finance-grade savings.", C.evidence))
+  if (telemetryDocsUrl(report)) lines.push(dimNote(`Setup docs: ${telemetryDocsUrl(report)}`))
+  return lines.join("\n")
 }
 
 export function renderFounderSummary(report: CachecatchReport): string {
@@ -454,16 +536,46 @@ export function renderFounderSummary(report: CachecatchReport): string {
   return lines.join("\n")
 }
 
+export function renderPrefixDriftSummary(report: CachecatchReport): string {
+  const top = firstDiagnostic(report)
+  const lines: string[] = [section("Prefix Drift Summary"), ""]
+  lines.push(
+    callout(
+      "#",
+      "Cachecatch found repeated prompt context that is structurally unlikely to hit cache because the prefix changes before stable blocks.",
+      C.evidence
+    )
+  )
+  lines.push("")
+  lines.push(
+    box(
+      "Diagnostic Signal",
+      [
+        `${C.muted(padRight("First divergence", 24))} ${C.warn(divergenceLabel(top))}`,
+        `${C.muted(padRight("Top route", 24))} ${C.value(top?.route ?? "unknown")}`,
+        `${C.muted(padRight("Primary issue", 24))} ${top?.mainIssue ?? report.summary.topBreaker}`,
+        `${C.muted(padRight("Current cache-read", 24))} ${report.dataQuality.hasCacheReadTelemetry ? C.value(formatPercent(report.summary.observedCacheReadRate)) : C.warn("not reported")}`,
+        `${C.muted(padRight("Money estimate", 24))} ${C.warn("unavailable / low confidence")}`,
+      ],
+      "cyan"
+    )
+  )
+  lines.push("")
+  lines.push(callout("→", "Savings become finance-grade once token usage and cached-token telemetry are enabled.", C.good))
+  return lines.join("\n")
+}
+
 export function renderMoneyMath(report: CachecatchReport, explainMath = false): string {
   const details = report.details
   const label = details?.estimateLabel ?? "Estimated recoverable cache loss"
   const moneyConfidence = details?.moneyConfidence ?? report.confidence
+  const financial = isFinancialMode(report)
   const lines: string[] = [section(moneyConfidence === "low" ? "Estimate Basis" : "Why This Number Is Credible"), ""]
   lines.push(
     callout(
       "#",
-      moneyConfidence === "low"
-        ? `${label}. This is useful for prioritization, but it needs token/cache telemetry before it should be treated as a precise savings number.`
+      !financial
+        ? `${label}. Money estimate unavailable / low confidence. Prompt structure issue detected. Enable telemetry to calculate finance-grade savings.`
         : "This estimate comes from missed reusable input tokens, the projected monthly run count, and the cached-read price delta shown below.",
       C.evidence
     )
@@ -493,6 +605,8 @@ export function renderMoneyMath(report: CachecatchReport, explainMath = false): 
     `${C.muted(padRight("Blended uncached input", 34))} ${C.value(details?.blendedUncachedInputCostPerMillion !== undefined ? `$${details.blendedUncachedInputCostPerMillion.toFixed(2)} / 1M tokens` : "unknown")}`,
     `${C.muted(padRight("Blended cached-read", 34))} ${C.value(details?.blendedCachedReadCostPerMillion !== undefined ? `$${details.blendedCachedReadCostPerMillion.toFixed(2)} / 1M tokens` : "unknown")}`,
     `${C.muted(padRight("Recoverable delta", 34))} ${C.good(details?.recoverableDeltaPerMillion !== undefined ? `$${details.recoverableDeltaPerMillion.toFixed(2)} / 1M tokens` : "unknown")}`,
+    `${C.muted(padRight("Pricing confidence", 34))} ${displayConfidence(details?.pricingConfidence ?? moneyConfidence)}`,
+    `${C.muted(padRight("Pricing basis", 34))} ${details?.pricingBasis ?? "not available"}`,
   ]
 
   lines.push(box("Traffic Projection", volumeRows, "cyan"))
@@ -501,21 +615,34 @@ export function renderMoneyMath(report: CachecatchReport, explainMath = false): 
   lines.push("")
   lines.push(box("Price Delta", priceRows, "green"))
   lines.push("")
-  lines.push(
-    box(
-      "Monthly Recoverable Cache Loss",
-      [
-        C.evidence(details?.monthlyRecoverableCacheLossFormula ?? "Not calculated: token/cache telemetry is insufficient."),
-        "",
-        `${C.muted("Displayed estimate")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)} / month`)}${
-          details?.monthlyRecoverableCacheLossPrecise
-            ? C.dim(`  (${formatUsdPrecise(details.monthlyRecoverableCacheLossPrecise)} before rounding)`)
-            : ""
-        }`,
-      ],
-      "red"
+  if (financial) {
+    lines.push(
+      box(
+        "Monthly Recoverable Cache Loss",
+        [
+          C.evidence(details?.monthlyRecoverableCacheLossFormula ?? "Not calculated: token/cache telemetry is insufficient."),
+          "",
+          `${C.muted("Displayed estimate")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)} / month`)}${
+            details?.monthlyRecoverableCacheLossPrecise
+              ? C.dim(`  (${formatUsdPrecise(details.monthlyRecoverableCacheLossPrecise)} before rounding)`)
+              : ""
+          }`,
+        ],
+        "red"
+      )
     )
-  )
+  } else {
+    lines.push(
+      box(
+        "Finance-Grade Savings",
+        [
+          "Not calculated: token/cache telemetry or confidently mapped pricing is insufficient.",
+          "Only token opportunity and prefix drift are shown in this report mode.",
+        ],
+        "yellow"
+      )
+    )
+  }
   lines.push("")
   lines.push(
     box(
@@ -531,9 +658,9 @@ export function renderMoneyMath(report: CachecatchReport, explainMath = false): 
     )
   )
   lines.push("")
-  lines.push(dimNote("Assumption: future traffic volume, route mix, and model mix are similar to this audit window. Re-run after deploy to replace the estimate with fresh observed telemetry."))
+  lines.push(dimNote(financial ? "Assumption: future traffic volume, route mix, and model mix are similar to this audit window. Re-run after deploy to replace the estimate with fresh observed telemetry." : "Tiny or heuristic dollar estimates are intentionally withheld until telemetry and pricing can support them."))
   lines.push("")
-  lines.push(transition("With the math exposed, the next section ranks where the money is leaking first."))
+  lines.push(transition(financial ? "With the math exposed, the next section ranks where the money is leaking first." : "With the basis exposed, the next section ranks the strongest prefix drift findings."))
   return lines.join("\n")
 }
 
@@ -569,37 +696,42 @@ export function renderCacheHealthScore(report: CachecatchReport): string {
 }
 
 export function renderTopLeaksTable(report: CachecatchReport, limit?: number, full = false): string {
+  const financial = isFinancialMode(report)
   const diagnostics = routeDiagnostics(report)
     .slice()
-    .sort((a, b) => b.monthlyRecoverableLossUsd - a.monthlyRecoverableLossUsd)
-    .filter((route) => full || route.monthlyRecoverableLossUsd > 0)
+    .sort((a, b) => financial ? b.monthlyRecoverableLossUsd - a.monthlyRecoverableLossUsd : a.firstDivergenceToken - b.firstDivergenceToken)
+    .filter((route) => financial ? full || route.monthlyRecoverableLossUsd > 0 : full || route.mainIssue.length > 0)
     .slice(0, limit ?? routeDiagnostics(report).length)
 
-  const lines: string[] = [section("Top Cache Leaks By Money"), ""]
+  const lines: string[] = [section(financial ? "Top Cache Leaks By Money" : "Top Prefix Drift Findings"), ""]
+  const tableWidth = Math.max(66, Math.min(WIDTH, 104) - 6)
+  const fixedWidth = 3 + 1 + 10 + 1 + 8 + 1 + 12 + 1
+  const flexibleWidth = Math.max(32, tableWidth - fixedWidth)
   const widths = {
     i: 3,
-    route: 26,
+    route: Math.max(18, Math.min(26, Math.floor(flexibleWidth * 0.48))),
     loss: 10,
     rate: 8,
     div: 12,
-    cause: 30,
+    cause: Math.max(14, flexibleWidth - Math.max(18, Math.min(26, Math.floor(flexibleWidth * 0.48)))),
   }
+  const separatorWidth = widths.i + widths.route + widths.loss + widths.rate + widths.div + widths.cause + 5
   const tableRows: string[] = []
   tableRows.push(
-    `${C.heading(padRight("#", widths.i))} ${C.heading(padRight("Route", widths.route))} ${C.heading(padRight("Loss/mo", widths.loss))} ${C.heading(padRight("Cache", widths.rate))} ${C.heading(padRight("Divergence", widths.div))} ${C.heading("Cause")}`
+    `${C.heading(padRight("#", widths.i))} ${C.heading(padRight("Route", widths.route))} ${C.heading(padRight(financial ? "Loss/mo" : "Money", widths.loss))} ${C.heading(padRight("Cache", widths.rate))} ${C.heading(padRight("Divergence", widths.div))} ${C.heading("Cause")}`
   )
-  tableRows.push(C.muted("─".repeat(96)))
+  tableRows.push(C.muted("─".repeat(separatorWidth)))
   if (diagnostics.length === 0) {
-    tableRows.push(C.dim("No nonzero route-level recoverable loss estimates in default view. Re-run with --full to inspect zero-value diagnostics."))
+    tableRows.push(C.dim(financial ? "No nonzero route-level recoverable loss estimates in default view. Re-run with --full to inspect zero-value diagnostics." : "No prefix drift findings found in default view. Re-run with --full to inspect all diagnostics."))
   }
   diagnostics.forEach((route, index) => {
     tableRows.push(
-      `${padRight(String(index + 1), widths.i)} ${padRight(C.value(routeTableLabel(route.route, widths.route)), widths.route)} ${padRight(C.badBold(formatUsd(route.monthlyRecoverableLossUsd)), widths.loss)} ${padRight(report.dataQuality.hasCacheReadTelemetry ? formatPercent(route.observedCacheReadRate) : "unknown", widths.rate)} ${padRight(`t${formatNumber(route.firstDivergenceToken)}`, widths.div)} ${truncate(route.cause, widths.cause)}`
+      `${padRight(String(index + 1), widths.i)} ${padRight(C.value(routeTableLabel(route.route, widths.route)), widths.route)} ${padRight(financial ? C.badBold(formatUsd(route.monthlyRecoverableLossUsd)) : C.warn("n/a"), widths.loss)} ${padRight(report.dataQuality.hasCacheReadTelemetry ? formatPercent(route.observedCacheReadRate) : "unknown", widths.rate)} ${padRight(route.firstDivergenceChar !== undefined ? `c${formatNumber(route.firstDivergenceChar)}` : `t${formatNumber(route.firstDivergenceToken)}`, widths.div)} ${truncate(route.cause, widths.cause)}`
     )
   })
-  lines.push(box("Ranked by monthly recoverable loss", tableRows, "red"))
+  lines.push(box(financial ? "Ranked by monthly recoverable loss" : "Ranked by earliest prefix divergence", tableRows, financial ? "red" : "cyan"))
   const firstTwo = diagnostics.slice(0, 2).reduce((sum, r) => sum + r.monthlyRecoverableLossUsd, 0)
-  if (diagnostics.length >= 2) {
+  if (financial && diagnostics.length >= 2) {
     lines.push("")
     lines.push(
       wrappedLine(
@@ -608,6 +740,9 @@ export function renderTopLeaksTable(report: CachecatchReport, limit?: number, fu
         "  "
       )
     )
+  } else if (!financial) {
+    lines.push("")
+    lines.push(callout("#", "Enable token usage and cached-token telemetry before treating any dollar amount as finance-grade.", C.evidence))
   }
   return lines.join("\n")
 }
@@ -615,23 +750,24 @@ export function renderTopLeaksTable(report: CachecatchReport, limit?: number, fu
 export function renderRouteDiagnostic(
   route: CachecatchRouteDiagnostic,
   totalLoss: number,
-  hasCacheTelemetry = true
+  hasCacheTelemetry = true,
+  financial = true
 ): string {
   const share = totalLoss > 0 ? route.monthlyRecoverableLossUsd / totalLoss : 0
   const lines: string[] = [routeSection(`ROUTE DIAGNOSTIC: ${route.route}`), ""]
   lines.push(
     box(
-      `${route.model ?? "model unknown"}  |  ${formatUsd(route.monthlyRecoverableLossUsd)}/mo`,
+      `${route.model ?? "model unknown"}  |  ${financial ? `${formatUsd(route.monthlyRecoverableLossUsd)}/mo` : "money unavailable"}`,
       [
         `${C.bad("×")} ${route.mainIssue}`,
         "",
-        `${C.muted(padRight("Share of total loss", 27))} ${C.value(formatPercent(share))}`,
+        `${C.muted(padRight(financial ? "Share of total loss" : "Money estimate", 27))} ${financial ? C.value(formatPercent(share)) : C.warn("unavailable / low confidence")}`,
         `${C.muted(padRight("Avg input", 27))} ${C.value(formatTokensShort(route.avgInputTokens))}`,
         `${C.muted(padRight("Cache-read now", 27))} ${C.badBold(hasCacheTelemetry ? formatPercent(route.observedCacheReadRate) : "unknown")}`,
         `${C.muted(padRight("Expected after fix", 27))} ${C.good(`~${route.expectedCacheReadRate}`)}`,
-        `${C.muted(padRight("First divergence", 27))} ${C.warn(`token ${formatNumber(route.firstDivergenceToken)}`)}`,
+        `${C.muted(padRight("First divergence", 27))} ${C.warn(divergenceLabel(route))}`,
       ],
-      route.monthlyRecoverableLossUsd > 2000 ? "red" : "yellow"
+      financial && route.monthlyRecoverableLossUsd > 2000 ? "red" : "yellow"
     )
   )
   lines.push("")
@@ -641,7 +777,7 @@ export function renderRouteDiagnostic(
 
   const evidenceRows = [
     `${C.evidence("#")} Trace ${route.evidence.traceId}`,
-    `First divergence at token ${formatNumber(route.firstDivergenceToken)}:`,
+    `First divergence at ${divergenceLabel(route)}:`,
     `  "${route.evidence.changingValue}"`,
   ]
   if (route.evidence.comparisonTraceId && route.evidence.comparisonValue) {
@@ -671,12 +807,20 @@ export function renderRouteDiagnostic(
   lines.push("")
   lines.push(subsection("Validation After Deploy"))
   lines.push(subitem("Re-run", route.validation.command, 10))
-  route.validation.successCriteria.forEach((criterion) => lines.push(`  ${C.muted("│")} ${C.good("✔")} ${criterion}`))
+  const criteria = financial
+    ? route.validation.successCriteria
+    : [
+        "token usage and cached-token telemetry are present in the next audit",
+        "first divergence moves after the stable prefix",
+        "prefix stability improves across comparable traces",
+      ]
+  criteria.forEach((criterion) => lines.push(`  ${C.muted("│")} ${C.good("✔")} ${criterion}`))
   return lines.join("\n")
 }
 
 export function renderOptimizedPromptStructure(report: CachecatchReport): string {
   const top = firstDiagnostic(report)
+  const financial = isFinancialMode(report)
   const lines: string[] = [section("Before / Fix / After Prompt Map"), ""]
   lines.push(
     callout(
@@ -687,8 +831,10 @@ export function renderOptimizedPromptStructure(report: CachecatchReport): string
   )
   lines.push("")
   const beforeRows = [
-    `${C.badBold("Recoverable loss")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo`)}  ${C.dim(moneyConfidenceLabel(report))}`,
-    `${C.muted("First divergence")}  ${top ? C.warn(`token ${formatNumber(top.firstDivergenceToken)}`) : C.warn("unknown")}`,
+    financial
+      ? `${C.badBold("Recoverable loss")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo`)}  ${C.dim(moneyConfidenceLabel(report))}`
+      : `${C.warn("Money estimate")}  unavailable / low confidence`,
+    `${C.muted("First divergence")}  ${C.warn(divergenceLabel(top))}`,
     `${C.muted("Cache health")}      ${C.value(`${report.score} / 100`)}  ${severity(report.score)}`,
     "",
     `${C.bad("×")}  [timestamp / request_id / session_id]`,
@@ -702,7 +848,7 @@ export function renderOptimizedPromptStructure(report: CachecatchReport): string
     `${C.evidence("dynamic")}           [user message]`,
   ]
   const fixRows = [
-    `${C.evidence("First divergence")} ${top ? `token ${formatNumber(top.firstDivergenceToken)}` : "unknown"}`,
+    `${C.evidence("First divergence")} ${divergenceLabel(top)}`,
     `${C.evidence("Cause")}            ${truncate(top?.cause ?? report.summary.topBreaker, 38)}`,
     `${C.good("Fix")}              ${truncate(fastestFix(report), 42)}`,
     "",
@@ -723,7 +869,9 @@ export function renderOptimizedPromptStructure(report: CachecatchReport): string
       (line) => `${C.evidence("→")}  ${padRight(line, 34)} ${C.evidence("dynamic")}`
     ),
     "",
-    `${C.good("Savings target")} ${C.good(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo recoverable`)}`,
+    financial
+      ? `${C.good("Savings target")} ${C.good(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo recoverable`)}`
+      : `${C.good("Telemetry target")} ${C.good("enable token + cached-token fields")}`,
     `${C.good("Speed impact")}   ${C.good("lower prefill work when cache reads recover")}`,
   ]
   const narrow = WIDTH < 112
@@ -742,24 +890,25 @@ export function renderOptimizedPromptStructure(report: CachecatchReport): string
   lines.push("")
   lines.push(callout("#", "Technical translation: cache is prefix-sensitive. One volatile token near the top can make the downstream prompt unique.", C.evidence))
   lines.push("")
-  lines.push(transition("Now that the prompt move is visible, the report proves the money estimate and ranks the routes to fix first."))
+  lines.push(transition(financial ? "Now that the prompt move is visible, the report proves the money estimate and ranks the routes to fix first." : "Now that the prompt move is visible, the report ranks prefix drift and shows the telemetry needed for finance-grade savings."))
   return lines.join("\n")
 }
 
 export function renderPersonalizedFixPlan(report: CachecatchReport): string {
+  const financial = isFinancialMode(report)
   const nonZero = routeDiagnostics(report).filter((route) => route.monthlyRecoverableLossUsd > 0)
-  const diagnostics = (nonZero.length > 0 ? nonZero : routeDiagnostics(report)).slice(0, 3)
+  const diagnostics = (financial && nonZero.length > 0 ? nonZero : routeDiagnostics(report)).slice(0, 3)
   const lines: string[] = [section("Personalized Fix Plan"), ""]
   diagnostics.forEach((route, index) => {
     lines.push(
       box(
         `Priority ${index + 1}  |  ${route.route}`,
         [
-          `${C.muted(padRight("Reason", 14))} ${index === 0 ? `Largest recoverable loss source: ${C.badBold(`${formatUsd(route.monthlyRecoverableLossUsd)}/month`)}.` : route.mainIssue}`,
+          `${C.muted(padRight("Reason", 14))} ${financial && index === 0 ? `Largest recoverable loss source: ${C.badBold(`${formatUsd(route.monthlyRecoverableLossUsd)}/month`)}.` : route.mainIssue}`,
           `${C.muted(padRight("Change", 14))} ${route.whatToChange[0]}`,
           `${C.muted(padRight("Validate", 14))} ${C.good(route.validation.successCriteria[0])}`,
         ],
-        index === 0 ? "red" : "yellow"
+        financial && index === 0 ? "red" : "yellow"
       )
     )
     if (index < diagnostics.length - 1) lines.push("")
@@ -768,23 +917,30 @@ export function renderPersonalizedFixPlan(report: CachecatchReport): string {
 }
 
 export function renderAgentRepairPrompt(report: CachecatchReport): string {
+  const financial = isFinancialMode(report)
   const diagnostics = routeDiagnostics(report)
     .filter((route) => route.monthlyRecoverableLossUsd > 0)
     .slice(0, 3)
-  const selected = diagnostics.length > 0 ? diagnostics : routeDiagnostics(report).slice(0, 3)
+  const selected = financial && diagnostics.length > 0 ? diagnostics : routeDiagnostics(report).slice(0, 3)
   const routeLines = selected.map(
     (route, index) =>
-      `${index + 1}. ${route.route}: move ${route.detectedFields.join(", ")} below the stable prefix; first divergence is token ${formatNumber(route.firstDivergenceToken)}; recoverable loss is ${formatUsd(route.monthlyRecoverableLossUsd)}/mo.`
+      financial
+        ? `${index + 1}. ${route.route}: move ${route.detectedFields.join(", ")} below the stable prefix; first divergence is ${divergenceLabel(route)}; recoverable loss is ${formatUsd(route.monthlyRecoverableLossUsd)}/mo.`
+        : `${index + 1}. ${route.route}: move ${route.detectedFields.join(", ")} below the stable prefix; first divergence is ${divergenceLabel(route)}; money estimate is unavailable until token/cache telemetry is enabled.`
   )
   const prompt = [
     "You are fixing prompt-cache losses in this codebase.",
-    `Goal: reduce ${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo in ${moneyConfidenceLabel(report).replace(/\u001b\[[0-9;]*m/g, "")} recoverable cache loss without changing agent behavior.`,
+    financial
+      ? `Goal: reduce ${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo in ${moneyConfidenceLabel(report).replace(/\u001b\[[0-9;]*m/g, "")} recoverable cache loss without changing agent behavior.`
+      : "Goal: stabilize prompt prefixes and enable token + cached-token telemetry so savings can be calculated without guessing.",
     "Refactor prompt assembly into stable_prefix and dynamic_tail.",
     "stable_prefix must render first and stay byte-stable across comparable requests: system role, policies, tool definitions, output rules, and static examples.",
     "dynamic_tail must render after that: timestamps, request/session/user IDs, CRM/order metadata, RAG chunks, memory summaries, user messages, tool outputs, and runtime availability flags.",
     "Route-specific priorities:",
     ...routeLines,
-    "Validation: rerun Cachecatch after deploy; first divergence should move after the stable prefix, cache-read telemetry should improve, and recoverable loss should fall.",
+    financial
+      ? "Validation: rerun Cachecatch after deploy; first divergence should move after the stable prefix, cache-read telemetry should improve, and recoverable loss should fall."
+      : "Validation: rerun Cachecatch after deploy; token usage and cached-token telemetry should be present, and prefix stability should improve.",
   ]
   return [
     section("Agent Repair Prompt"),
@@ -797,9 +953,12 @@ export function renderAgentRepairPrompt(report: CachecatchReport): string {
 
 export function renderFullAgentPrompt(report: CachecatchReport): string {
   const diagnostics = routeDiagnostics(report)
+  const financial = isFinancialMode(report)
   const routeLines = diagnostics.flatMap((route, index) => [
     `${index + 1}. ${route.route} (${route.model ?? "unknown model"})`,
-    `   Impact: ${formatUsd(route.monthlyRecoverableLossUsd)}/month recoverable cache loss; cache-read ${formatPercent(route.observedCacheReadRate)}; first divergence token ${formatNumber(route.firstDivergenceToken)}.`,
+    financial
+      ? `   Impact: ${formatUsd(route.monthlyRecoverableLossUsd)}/month recoverable cache loss; cache-read ${formatPercent(route.observedCacheReadRate)}; first divergence ${divergenceLabel(route)}.`
+      : `   Impact: prefix drift detected; money unavailable until telemetry is enabled; cache-read ${formatPercent(route.observedCacheReadRate)}; first divergence ${divergenceLabel(route)}.`,
     `   Problem: ${route.mainIssue}`,
     `   Move out of stable prefix: ${route.detectedFields.join(", ")}.`,
     `   Change: ${route.whatToChange.join(" ")}`,
@@ -813,7 +972,9 @@ export function renderFullAgentPrompt(report: CachecatchReport): string {
     "You are fixing prompt-cache losses in this codebase.",
     "",
     "Goal:",
-    `Reduce estimated recoverable cache loss from ${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/month by making prompt assembly cache-friendly without changing agent behavior.`,
+    financial
+      ? `Reduce estimated recoverable cache loss from ${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/month by making prompt assembly cache-friendly without changing agent behavior.`
+      : "Stabilize prompt prefixes and add token/cache telemetry so Cachecatch can calculate finance-grade savings without changing agent behavior.",
     "",
     "Core rule:",
     "Prompt caching is prefix-sensitive. Stable instructions must render before any request-specific value. Do not put timestamps, request IDs, session IDs, user IDs, order IDs, retrieved chunks, CRM notes, memory summaries, tool outputs, or runtime environment flags inside the stable prefix.",
@@ -857,6 +1018,7 @@ export function renderFullAgentPrompt(report: CachecatchReport): string {
 }
 
 export function renderValidationPlan(report: CachecatchReport): string {
+  const financial = isFinancialMode(report)
   const command =
     report.source === "sample"
       ? 'npx cachecatch audit "acme-support-agent" --window 24h'
@@ -866,8 +1028,10 @@ export function renderValidationPlan(report: CachecatchReport): string {
   const criteria = selected.flatMap((route, index) => {
     const n = index + 1
     return [
-      `${n}. ${route.route}: first divergence moves later than token ${formatNumber(route.firstDivergenceToken)}.`,
-      `${n}. ${route.route}: estimated recoverable cache loss drops below ${formatUsd(route.monthlyRecoverableLossUsd)}/month.`,
+      `${n}. ${route.route}: first divergence moves later than ${divergenceLabel(route)}.`,
+      financial
+        ? `${n}. ${route.route}: estimated recoverable cache loss drops below ${formatUsd(route.monthlyRecoverableLossUsd)}/month.`
+        : `${n}. ${route.route}: token usage and cached-token telemetry are available for the next audit.`,
       `${n}. ${route.route}: ${report.dataQuality.hasCacheReadTelemetry ? "cache-read telemetry improves in the next validation window" : "cache-read telemetry is enabled or remains explicitly unknown"}.`,
       `${n}. ${route.route}: prompt prefix becomes more stable across comparable traces.`,
     ]
@@ -893,7 +1057,7 @@ export function renderDataQuality(report: CachecatchReport): string {
     ["Provider metadata available", dq.hasProviderMetadata],
     ["Model metadata available", dq.hasModelMetadata],
     [`Comparable route groups: ${dq.comparableRunGroups}`, dq.comparableRunGroups > 0],
-    ["Pricing config loaded", true],
+    [`Pricing confidence: ${plainConfidence(report.details?.pricingConfidence)}`, report.details?.pricingConfidence === "high"],
     ["Monthly projection shown", true],
   ]
   const lines: string[] = [section("Data Quality"), ""]
@@ -903,8 +1067,10 @@ export function renderDataQuality(report: CachecatchReport): string {
       [
         `${C.muted(padRight("Diagnosis confidence", 24))} ${displayConfidence(report.details?.diagnosisConfidence ?? report.confidence)}`,
         `${C.muted(padRight("Money confidence", 24))} ${displayConfidence(report.details?.moneyConfidence ?? report.confidence)}`,
+        `${C.muted(padRight("Pricing confidence", 24))} ${displayConfidence(report.details?.pricingConfidence)}`,
         `${C.muted(padRight("Telemetry quality", 24))} ${C.value((report.details?.telemetryQuality ?? "partial").toUpperCase())}`,
         `${C.muted(padRight("Reason", 24))} ${report.details?.confidenceReason ?? report.dataQuality.confidenceReasons.join(", ")}`,
+        `${C.muted(padRight("Pricing basis", 24))} ${report.details?.pricingBasis ?? "not available"}`,
       ],
       (report.details?.moneyConfidence ?? report.confidence) === "high" ? "green" : (report.details?.moneyConfidence ?? report.confidence) === "medium" ? "yellow" : "red",
       82
@@ -927,6 +1093,23 @@ export function renderDataQuality(report: CachecatchReport): string {
     dq.warnings.slice(0, 4).forEach((warning) => lines.push(`    ${C.warn("!")} ${warning}`))
   }
   return lines.join("\n")
+}
+
+export function renderTelemetrySetupNeeded(report: CachecatchReport): string {
+  const rows = [
+    `${report.dataQuality.hasTokenUsage ? C.good("✔") : C.warn("!")} Token usage exported per LLM run`,
+    `${report.dataQuality.hasCacheReadTelemetry ? C.good("✔") : C.warn("!")} Cached-token / cache-read fields exported per LLM run`,
+    `${report.details?.pricingConfidence === "high" ? C.good("✔") : C.warn("!")} Exact model pricing mapped, including cached-input price`,
+    `${report.dataQuality.hasRenderedPrompts ? C.good("✔") : C.warn("!")} Rendered prompts available for prefix comparison`,
+  ]
+  if (telemetryDocsUrl(report)) rows.push(`Setup docs: ${telemetryDocsUrl(report)}`)
+  return [
+    section("Telemetry Setup Needed"),
+    "",
+    box("Priority 0", rows, "yellow"),
+    "",
+    callout("→", "Savings become finance-grade once token usage and cached-token telemetry are enabled.", C.good),
+  ].join("\n")
 }
 
 export function renderExportCommands(report: CachecatchReport): string {
@@ -958,9 +1141,10 @@ export function renderExportCommands(report: CachecatchReport): string {
 export function renderRouteDiagnostics(report: CachecatchReport, full = false): string {
   const diagnostics = routeDiagnostics(report)
   const nonZero = diagnostics.filter((route) => route.monthlyRecoverableLossUsd > 0)
-  const selected = (full ? diagnostics : nonZero.length > 0 ? nonZero : diagnostics).slice(0, full ? diagnostics.length : 3)
+  const financial = isFinancialMode(report)
+  const selected = (full ? diagnostics : financial && nonZero.length > 0 ? nonZero : diagnostics).slice(0, full ? diagnostics.length : 3)
   return selected
-    .map((route) => renderRouteDiagnostic(route, report.summary.estimatedMonthlyWasteUsd, report.dataQuality.hasCacheReadTelemetry))
+    .map((route) => renderRouteDiagnostic(route, report.summary.estimatedMonthlyWasteUsd, report.dataQuality.hasCacheReadTelemetry, financial))
     .join(`\n\n${divider()}\n\n`)
 }
 
@@ -975,19 +1159,35 @@ export function renderTerminalReportSections(
   report: CachecatchReport,
   options: TerminalReportOptions = {}
 ): string[] {
+  if (isFinancialMode(report)) {
+    return [
+      renderHeader(report),
+      renderFinancialHero(report),
+      renderFounderSummary(report),
+      renderTopLeaksTable(report, undefined, Boolean(options.full)),
+      renderOptimizedPromptStructure(report),
+      renderRouteDiagnostics(report, Boolean(options.full)),
+      renderMoneyMath(report, Boolean(options.explainMath)),
+      renderPersonalizedFixPlan(report),
+      renderValidationPlan(report),
+      renderDataQuality(report),
+      renderAgentRepairPrompt(report),
+      ...(options.full || options.showAgentPrompt ? [renderFullAgentPrompt(report)] : []),
+      renderExportCommands(report),
+      renderShareCta(report),
+    ]
+  }
   return [
     renderHeader(report),
-    renderFounderSummary(report),
+    renderDiagnosticHero(report),
+    renderPrefixDriftSummary(report),
     renderOptimizedPromptStructure(report),
-    renderMoneyMath(report, Boolean(options.explainMath)),
-    renderCacheHealthScore(report),
     renderTopLeaksTable(report, undefined, Boolean(options.full)),
+    renderTelemetrySetupNeeded(report),
     renderRouteDiagnostics(report, Boolean(options.full)),
-    renderPersonalizedFixPlan(report),
+    renderDataQuality(report),
     renderAgentRepairPrompt(report),
     ...(options.full || options.showAgentPrompt ? [renderFullAgentPrompt(report)] : []),
-    renderValidationPlan(report),
-    renderDataQuality(report),
     renderExportCommands(report),
     renderShareCta(report),
   ]
@@ -1007,6 +1207,7 @@ export function renderShareCta(report: CachecatchReport): string {
 
 export function renderCompactSummary(report: CachecatchReport): string {
   const top = routeDiagnostics(report).slice(0, 3)
+  const financial = isFinancialMode(report)
   const lines: string[] = []
   lines.push(
     box(
@@ -1015,18 +1216,20 @@ export function renderCompactSummary(report: CachecatchReport): string {
         `${C.brandBold(`${APP_NAME.toUpperCase()} v${APP_VERSION}`)} ${C.muted("- Prompt Cache Audit")}`,
         C.value(report.projectName),
         "",
-        `${C.badBold("EST. RECOVERABLE CACHE LOSS")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)} / month`)}`,
+        financial
+          ? `${C.badBold("RECOVERABLE CACHE SAVINGS")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)} / month`)}`
+          : `${C.warn("SAVINGS NOT PROVABLE YET")}  ${C.muted("token/cache telemetry or pricing missing")}`,
         `${C.muted("Current cache-read")} ${C.value(report.dataQuality.hasCacheReadTelemetry ? formatPercent(report.summary.observedCacheReadRate) : "unknown")}  ${C.muted("→ target")} ${C.good(targetRate(report))}`,
       ],
-      "red",
+      financial ? "red" : "yellow",
       82
     )
   )
   lines.push("")
-  const leakRows = ["Top leaks:"]
+  const leakRows = [financial ? "Top leaks:" : "Top prefix drift findings:"]
   top.forEach((route, index) => {
     leakRows.push(
-      `${index + 1}. ${padRight(route.route, 26)} ${C.badBold(padLeft(formatUsd(route.monthlyRecoverableLossUsd), 8))}  ${C.muted(route.cause)}`
+      `${index + 1}. ${padRight(route.route, 26)} ${financial ? C.badBold(padLeft(formatUsd(route.monthlyRecoverableLossUsd), 8)) : C.warn(padLeft("n/a", 8))}  ${C.muted(route.cause)}`
     )
   })
   lines.push(box("Fastest Payback", leakRows, "yellow", 82))
@@ -1042,5 +1245,3 @@ export function renderCompactSummary(report: CachecatchReport): string {
   lines.push(`  ${C.bad("\u2764\uFE0F")}  Share your report on X: npx cachecatch share ./cachecatch-report.json`)
   return lines.join("\n")
 }
-
-

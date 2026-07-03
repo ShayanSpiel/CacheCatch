@@ -81,7 +81,7 @@ npx cachecatch audit local --window 7d          # local Claude Code/Codex/OpenCo
 npx cachecatch audit <project> --provider langsmith --window 7d
 npx cachecatch projects --provider langfuse     # list available projects
 npx cachecatch export report.json --format html --out ./report.html
-npx cachecatch share --handle @yourname         # generate X card PNG from latest/sample report
+npx --yes cachecatch share --handle @yourname    # generate X card PNG from latest report (--yes skips the rare re-install prompt)
 npx cachecatch config set-key langsmith <key>   # persist API key to .env
 ```
 
@@ -121,3 +121,45 @@ npm run cachecatch        # Run the CLI via tsx (no build step)
 - The CLI keeps everything in memory; nothing is persisted unless the
   user explicitly exports HTML/JSON or the CLI auto-saves a local JSON report
   under `reports/` after an audit.
+
+## Publishing (CI)
+
+Two GitHub Actions workflows are checked in under `.github/workflows/`:
+
+- **`ci.yml`** — runs on every push to `main` and on every PR. Runs
+  typecheck, lint, tests, build:cli, build:web across Node 18 / 20 / 22.
+- **`publish.yml`** — runs on every `v*` tag push. Builds the CLI, runs
+  the test suite, then publishes to npm with provenance
+  (`--provenance --access public`).
+
+**To publish a new version:**
+
+```bash
+# 1. Bump the version in package.json
+npm version patch   # or minor / major
+# 2. Push the commit + tag
+git push origin main --follow-tags
+```
+
+The publish step uses `secrets.NPM_TOKEN` (classic automation token) and
+OIDC provenance via `id-token: write`. The npm package must be claimed by
+the maintainer on npmjs.com the first time, otherwise the publish will
+fail with a 403.
+
+**One-time repo setup (GitHub):**
+
+1. Add `NPM_TOKEN` to repo Settings → Secrets and variables → Actions.
+2. Make sure the workflow has `id-token: write` permission (already set).
+3. The first publish needs `npm login` + `npm access` claim from a human
+   on the npmjs.com side; subsequent publishes are fully automated.
+
+## Release checklist
+
+1. `npm run typecheck` clean
+2. `npm test` clean
+3. `npm run build` clean
+4. `npm version patch` (or `minor` / `major`)
+5. `git push origin main --follow-tags`
+6. Watch the **Publish to npm** workflow in GitHub Actions
+7. Verify the new version on https://www.npmjs.com/package/cachecatch
+8. Smoke test: `npx --yes cachecatch@latest --version`

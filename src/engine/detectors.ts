@@ -288,6 +288,7 @@ export function detectFindings(traces: NormalizedTrace[]): CacheFinding[] {
         evidence: match.evidence,
         basis: match.basis,
         firstDivergenceToken,
+        firstDivergenceChar: match.position,
         estimatedLostTokens,
         estimatedMonthlyWasteUsd,
         recommendation: getRecommendation(match.type),
@@ -345,6 +346,7 @@ export function buildRouteAudits(
             ? observedInputTokens / routeTraces.length
             : 4000
         )
+    const firstDivergenceChar = prefixStats?.firstDivergenceChar
 
     const estimatedInputTokens = routeTraces.reduce(
       (sum, t) => sum + (t.metrics.totalInputTokens || approximateTokens(t.promptText)),
@@ -387,6 +389,7 @@ export function buildRouteAudits(
           : Math.round((estimatedCacheOpportunityTokens * 0.003 * 30) / 1000),
       avgInputTokens,
       avgFirstDivergenceToken: firstDivergenceToken,
+      avgFirstDivergenceChar: firstDivergenceChar,
       findings: routeFindings,
     })
   }

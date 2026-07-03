@@ -2,9 +2,11 @@ import type {
   AuditWindow,
   CachecatchReport,
   CacheFinding,
+  Confidence,
   NormalizedTrace,
   Provider,
   RecommendedLayout,
+  ReportMode,
 } from "../types/index.ts"
 import { buildRouteAudits, detectFindings } from "./detectors.ts"
 import {
@@ -16,6 +18,16 @@ import {
   telemetryQuality,
 } from "./scoring.ts"
 import { DEFAULT_PRICE_PER_1K_TOKENS_USD } from "./constants.ts"
+
+interface ModelPricing {
+  inputUsdPerMillion: number
+  cachedInputUsdPerMillion?: number
+}
+
+const MODEL_PRICING: Record<string, ModelPricing> = {
+  "gpt-4o": { inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 1.25 },
+  "gpt-4o-mini": { inputUsdPerMillion: 0.15, cachedInputUsdPerMillion: 0.075 },
+}
 
 function generateId(): string {
   return `report-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -109,6 +121,68 @@ function telemetryDocsUrl(source: Provider): string | undefined {
   }
 }
 
+function normalizeModelName(model: string | undefined): string {
+  return (model ?? "").trim().toLowerCase()
+}
+
+function pricingForModel(model: string | undefined): ModelPricing | undefined {
+  return MODEL_PRICING[normalizeModelName(model)]
+}
+
+function pricingConfidenceFor(traces: NormalizedTrace[]): {
+  confidence: Confidence
+  basis: string
+  uncachedInputUsdPerMillion?: number
+  cachedReadUsdPerMillion?: number
+} {
+  const models = Array.from(new Set(traces.map((trace) => normalizeModelName(trace.model)).filter((model) => model && model !== "unknown")))
+  if (models.length === 0) {
+    return { confidence: "low", basis: "model metadata missing or unknown; pricing was not applied" }
+  }
+
+  const priced = models.map((model) => ({ model, pricing: pricingForModel(model) }))
+  const missing = priced.filter((entry) => !entry.pricing)
+  if (missing.length > 0) {
+    return {
+      confidence: "low",
+      basis: `pricing unknown for ${missing.map((entry) => entry.model).join(", ")}; no fallback price was applied`,
+    }
+  }
+
+  const missingCached = priced.filter((entry) => entry.pricing?.cachedInputUsdPerMillion === undefined)
+  if (missingCached.length > 0) {
+    return {
+      confidence: "medium",
+      basis: `uncached input pricing known, cached-input pricing missing for ${missingCached.map((entry) => entry.model).join(", ")}; precise cache savings disabled`,
+    }
+  }
+
+  const tokenByModel = new Map<string, number>()
+  for (const trace of traces) {
+    const model = normalizeModelName(trace.model)
+    if (!model || model === "unknown") continue
+    tokenByModel.set(model, (tokenByModel.get(model) ?? 0) + (trace.metrics.totalInputTokens || 0))
+  }
+  const denominator = Array.from(tokenByModel.values()).reduce((sum, tokens) => sum + tokens, 0)
+  const weighted = (field: keyof ModelPricing): number => {
+    if (denominator <= 0) {
+      const values = priced.map((entry) => entry.pricing?.[field] ?? 0)
+      return values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
+    }
+    return priced.reduce((sum, entry) => {
+      const tokens = tokenByModel.get(entry.model) ?? 0
+      return sum + ((entry.pricing?.[field] ?? 0) * tokens) / denominator
+    }, 0)
+  }
+
+  return {
+    confidence: "high",
+    basis: `exact built-in pricing matched for ${models.join(", ")}`,
+    uncachedInputUsdPerMillion: weighted("inputUsdPerMillion"),
+    cachedReadUsdPerMillion: weighted("cachedInputUsdPerMillion"),
+  }
+}
+
 /**
  * The single entry point of the engine. Given a batch of
  * `NormalizedTrace[]`, produce a `CachecatchReport`.
@@ -158,27 +232,18 @@ export function buildReport(
   const projectedMonthlyMissedReusableTokens = Math.round(
     windowMissedReusableTokens * projectionFactor
   )
-  const blendedUncachedInputCostPerMillion = DEFAULT_PRICE_PER_1K_TOKENS_USD * 1000
-  const blendedCachedReadCostPerMillion = blendedUncachedInputCostPerMillion * 0.1
+  const pricing = pricingConfidenceFor(traces)
+  const blendedUncachedInputCostPerMillion = pricing.uncachedInputUsdPerMillion
+  const blendedCachedReadCostPerMillion = pricing.cachedReadUsdPerMillion
   const recoverableDeltaPerMillion =
-    blendedUncachedInputCostPerMillion - blendedCachedReadCostPerMillion
+    blendedUncachedInputCostPerMillion !== undefined &&
+    blendedCachedReadCostPerMillion !== undefined
+      ? blendedUncachedInputCostPerMillion - blendedCachedReadCostPerMillion
+      : undefined
   const monthlyRecoverableCacheLossPrecise =
-    (projectedMonthlyMissedReusableTokens * recoverableDeltaPerMillion) / 1_000_000
-  const estimatedMonthlyWasteUsd = Math.round(monthlyRecoverableCacheLossPrecise)
-  const preciseRouteLosses = routes.map((route) => ({
-    route,
-    precise:
-      (route.estimatedCacheOpportunityTokens * projectionFactor * recoverableDeltaPerMillion) /
-      1_000_000,
-  }))
-  const roundedRouteLosses = preciseRouteLosses.map(({ precise }) => Math.round(precise))
-  const roundedRouteTotal = roundedRouteLosses.reduce((sum, loss) => sum + loss, 0)
-  const routeRoundingDelta = estimatedMonthlyWasteUsd - roundedRouteTotal
-  routes = preciseRouteLosses.map(({ route }, index) => ({
-    ...route,
-    estimatedMonthlyWasteUsd:
-      roundedRouteLosses[index] + (index === 0 ? routeRoundingDelta : 0),
-  }))
+    recoverableDeltaPerMillion !== undefined
+      ? (projectedMonthlyMissedReusableTokens * recoverableDeltaPerMillion) / 1_000_000
+      : undefined
 
   const topBreaker =
     findings.length > 0 ? findings[0].title : "No significant cache breakers detected."
@@ -212,7 +277,40 @@ export function buildReport(
 
   const confidence = calculateReportConfidence(dataQuality)
   const diagnosisConfidence = calculateDiagnosisConfidence(dataQuality)
-  const moneyConfidence = calculateMoneyConfidence(dataQuality)
+  const baseMoneyConfidence = calculateMoneyConfidence(dataQuality)
+  const financialMode =
+    dataQuality.hasTokenUsage &&
+    dataQuality.hasCacheReadTelemetry &&
+    pricing.confidence === "high" &&
+    recoverableDeltaPerMillion !== undefined
+  const reportMode: ReportMode = financialMode ? "financial_cache_audit" : "prefix_diagnostic"
+  const moneyConfidence: Confidence = financialMode
+    ? baseMoneyConfidence
+    : pricing.confidence === "medium" && dataQuality.hasTokenUsage && dataQuality.hasCacheReadTelemetry
+      ? "medium"
+      : "low"
+  const estimatedMonthlyWasteUsd =
+    financialMode && monthlyRecoverableCacheLossPrecise !== undefined
+      ? Math.round(monthlyRecoverableCacheLossPrecise)
+      : 0
+  if (financialMode && recoverableDeltaPerMillion !== undefined) {
+    const preciseRouteLosses = routes.map((route) => ({
+      route,
+      precise:
+        (route.estimatedCacheOpportunityTokens * projectionFactor * recoverableDeltaPerMillion) /
+        1_000_000,
+    }))
+    const roundedRouteLosses = preciseRouteLosses.map(({ precise }) => Math.round(precise))
+    const roundedRouteTotal = roundedRouteLosses.reduce((sum, loss) => sum + loss, 0)
+    const routeRoundingDelta = estimatedMonthlyWasteUsd - roundedRouteTotal
+    routes = preciseRouteLosses.map(({ route }, index) => ({
+      ...route,
+      estimatedMonthlyWasteUsd:
+        roundedRouteLosses[index] + (index === 0 ? routeRoundingDelta : 0),
+    }))
+  } else {
+    routes = routes.map((route) => ({ ...route, estimatedMonthlyWasteUsd: 0 }))
+  }
   const quality = telemetryQuality(dataQuality)
   const confidenceReason = [
     dataQuality.hasRenderedPrompts ? "rendered prompts available" : "rendered prompts missing",
@@ -221,16 +319,14 @@ export function buildReport(
       ? "cached-token telemetry available"
       : "cached-token telemetry missing",
   ].join(", ")
-  const estimateLabel = dataQuality.hasTokenUsage
+  const estimateLabel = financialMode
     ? "Estimated recoverable cache loss"
     : dataQuality.hasRenderedPrompts
-      ? "Directional token estimate"
-      : "Prefix-drift estimate"
-  const savingsAccuracyNote = dataQuality.hasTokenUsage
-    ? dataQuality.hasCacheReadTelemetry
-      ? "Savings math uses observed input-token volume, observed cache-read telemetry when present, the displayed monthly projection, and the displayed uncached-vs-cached input price delta. The remaining uncertainty is future traffic and route/model mix."
-      : "Savings math uses observed input-token volume and prompt-prefix drift, but cache-read telemetry is missing. Treat dollars as a directional estimate until cached-token fields are exported by the provider."
-    : "Savings math uses prompt text and approximate token counts because token usage is missing. Use this to prioritize fixes, not as a finance-grade savings number."
+      ? "Prefix-drift estimate"
+      : "Directional token estimate"
+  const savingsAccuracyNote = financialMode
+    ? "Savings math uses observed input-token volume, observed cache-read telemetry, exact matched model pricing, the displayed monthly projection, and the displayed uncached-vs-cached input price delta. The remaining uncertainty is future traffic and route/model mix."
+    : "Money estimate unavailable / low confidence. Prompt structure issue detected. Enable token usage, cached-token telemetry, and known model pricing to calculate finance-grade savings."
 
   return {
     id: options.id ?? generateId(),
@@ -260,8 +356,10 @@ export function buildReport(
     fixPlan: generateFixPlan(findings),
     dataQuality,
     details: {
+      reportMode,
       diagnosisConfidence,
       moneyConfidence,
+      pricingConfidence: pricing.confidence,
       telemetryQuality: quality,
       confidenceReason,
       estimateLabel,
@@ -280,7 +378,11 @@ export function buildReport(
       blendedCachedReadCostPerMillion,
       recoverableDeltaPerMillion,
       monthlyRecoverableCacheLossPrecise,
-      monthlyRecoverableCacheLossFormula: `${(projectedMonthlyMissedReusableTokens / 1_000_000).toFixed(1)}M * $${recoverableDeltaPerMillion.toFixed(2)} / 1M = $${monthlyRecoverableCacheLossPrecise.toFixed(2)}`,
+      pricingBasis: pricing.basis,
+      monthlyRecoverableCacheLossFormula:
+        recoverableDeltaPerMillion !== undefined && monthlyRecoverableCacheLossPrecise !== undefined
+          ? `${(projectedMonthlyMissedReusableTokens / 1_000_000).toFixed(1)}M * $${recoverableDeltaPerMillion.toFixed(2)} / 1M = $${monthlyRecoverableCacheLossPrecise.toFixed(2)}`
+          : undefined,
       credibilityReason: confidenceReason,
       savingsAccuracyNote,
       telemetryDocsUrl: telemetryDocsUrl(options.source),

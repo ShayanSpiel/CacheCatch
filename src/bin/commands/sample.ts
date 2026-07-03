@@ -52,14 +52,16 @@ export function makeSampleCommand(): Command {
     .option("--reset", "Re-generate the underlying mock dataset")
     .action(async (flags: SampleFlags) => {
       await withErrorHandling(async () => {
-        configureColor(flags.color !== false)
+        const colorEnabled = flags.color !== false
+        const noColorRequested = !colorEnabled || process.argv.includes("--no-color") || Boolean(process.env.NO_COLOR)
+        configureColor(colorEnabled)
 
-        const spinner = flags.json
+        const spinner = flags.json || noColorRequested
           ? null
           : ora({
               text: chalk.cyan("Loading sample data..."),
               color: "cyan",
-              isEnabled: flags.color !== false,
+              isEnabled: !noColorRequested,
             }).start()
 
         if (spinner) {

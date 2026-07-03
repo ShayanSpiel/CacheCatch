@@ -188,10 +188,12 @@ npx cachecatch@latest sample --out ./cachecatch-report.html
 Every report generates a shareable X banner. Post it to show your cache status:
 
 ```bash
-npx cachecatch@latest share --handle @yourname
+npx --yes cachecatch@latest share --handle @yourname
 ```
 
-This fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. Ready to attach to a post.
+`--yes` skips the rare npx re-install prompt. This fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. Ready to attach to a post.
+
+`share` automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit` (or `audit local`), then `share`. If you want to share a specific report instead, pass its path:
 
 From a saved report:
 
@@ -355,6 +357,40 @@ npx cachecatch@latest sample --json > audit.json
 ```
 
 No spinner or status text is printed in JSON mode.
+
+---
+
+## Privacy & Where Data Lives
+
+Cachecatch is local-first. Your API keys and trace data never leave your machine except to the provider you explicitly point it at.
+
+**Network calls Cachecatch makes:**
+
+| Endpoint | When | What it sends |
+|---|---|---|
+| Your provider (LangSmith / Langfuse / Braintrust) | only during `audit` | your provider API key (read from env or `.env`) |
+| `https://unavatar.io/x/<handle>` | only during `share` | the public X handle you pass (no auth) |
+
+There is no Cachecatch server, no analytics, no phone-home, no cookies, no telemetry from the CLI itself.
+
+**Files Cachecatch writes to your disk:**
+
+| What | Where | Notes |
+|---|---|---|
+| Auto-saved JSON reports | `./reports/cachecatch-*.json` (in the directory you ran the command from) | Gitignored. Contains the report only — no API key. |
+| Exported HTML | `./cachecatch-report.html` (or path from `--out`) | Gitignored. |
+| X card PNG | `./cachecatch-x-share1.png` (or path from `--out`) | Visible to you by design. |
+| API keys from `config set-key` | `./.env` (in CWD) | Gitignored. Read on next run. |
+| Local OTel telemetry | `~/.cachecatch/telemetry/<agent>/*.jsonl` | Only if you opt in via `init` + `daemon`. Local token/cost events from your IDE agent sessions. |
+| Daemon PID file | `~/.cachecatch/telemetry/daemon.pid` | Only if you run `daemon`. Auto-cleared on shutdown. |
+| Claude Code OTel env | `~/.cachecatch/claude-code-otel.env` | Only if you run `init claude`. |
+| Codex OTel config | `~/.codex/config.toml` (edited in place) | Only if you run `init codex`. |
+
+To delete everything Cachecatch left on your machine:
+
+```bash
+rm -rf ./reports ./.env ~/.cachecatch
+```
 
 ---
 

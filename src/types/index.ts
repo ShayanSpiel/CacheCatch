@@ -78,6 +78,8 @@ export type Severity = "low" | "medium" | "high" | "critical"
 
 export type FindingBasis = "observed" | "estimated" | "data_quality"
 
+export type ReportMode = "financial_cache_audit" | "prefix_diagnostic"
+
 export type CacheBreakerType =
   | "early_dynamic_metadata"
   | "timestamp_in_prefix"
@@ -133,6 +135,7 @@ export interface CacheFinding {
   evidence: string
   basis: FindingBasis
   firstDivergenceToken?: number
+  firstDivergenceChar?: number
   estimatedLostTokens?: number
   estimatedMonthlyWasteUsd?: number
   recommendation: string
@@ -155,6 +158,7 @@ export interface RouteAudit {
 
   avgInputTokens: number
   avgFirstDivergenceToken: number
+  avgFirstDivergenceChar?: number
   findings: CacheFinding[]
 }
 
@@ -204,11 +208,15 @@ export interface CachecatchRouteDiagnostic {
     command: string
     successCriteria: string[]
   }
+  firstDivergenceChar?: number
+  firstDivergenceTokenApproximate?: boolean
 }
 
 export interface CachecatchReportDetails {
+  reportMode?: ReportMode
   diagnosisConfidence?: Confidence
   moneyConfidence?: Confidence
+  pricingConfidence?: Confidence
   telemetryQuality?: "complete" | "partial" | "weak"
   confidenceReason?: string
   estimateLabel?: "Estimated recoverable cache loss" | "Directional token estimate" | "Prefix-drift estimate"
@@ -223,6 +231,7 @@ export interface CachecatchReportDetails {
   blendedUncachedInputCostPerMillion?: number
   blendedCachedReadCostPerMillion?: number
   recoverableDeltaPerMillion?: number
+  pricingBasis?: string
   monthlyRecoverableCacheLossPrecise?: number
   monthlyRecoverableCacheLossFormula?: string
   fastestFirstFix?: string

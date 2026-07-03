@@ -8,6 +8,8 @@ export interface PrefixStats {
   totalLength: number
   totalTokens: number
   firstDivergenceToken: number
+  firstDivergenceChar: number
+  firstDivergenceTokenApproximate: boolean
   prefixRatio: number
 }
 
@@ -51,6 +53,8 @@ export function comparePrompts(prompts: string[]): PrefixStats | null {
     totalLength: Math.round(avgTotalLength),
     totalTokens: avgTotalTokens,
     firstDivergenceToken,
+    firstDivergenceChar: commonPrefixLength,
+    firstDivergenceTokenApproximate: true,
     prefixRatio,
   }
 }
