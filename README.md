@@ -1,8 +1,10 @@
 # Cachecatch
 
+**The first prompt-cache audit and optimization tool for AI agents.**
+
+Create your agentic [CacheCatch report + flex your 𝕏 banner it right now ↗︎](https://cachecatch.spielos.xyz/)
 [![Sample Agentic CacheCatch Report banner](public/cachecatch-x-share.png)](https://cachecatch.spielos.xyz/#heroCta)
 
-**The first prompt-cache audit and optimization tool for AI agents.**
 
 Cachecatch was built because we couldn't find a proper cache report on our own observability traces. Nobody else was doing this. So we built it.
 
