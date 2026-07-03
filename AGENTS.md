@@ -181,8 +181,15 @@ fail with a 403.
 1. `npm run typecheck` clean
 2. `npm test` clean
 3. `npm run build` clean
-4. `npm version patch` (or `minor` / `major`)
+4. Bump the version (TWO places — `package.json` and `src/engine/constants.ts` `APP_VERSION`):
+   ```bash
+   V="0.4.X" && \
+     sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$V\"/" package.json && \
+     sed -i '' "s/APP_VERSION = \"[^\"]*\"/APP_VERSION = \"$V\"/" src/engine/constants.ts && \
+     sed -i '' "s/softwareVersion: \"[^\"]*\"/softwareVersion: \"$V\"/" app/page.tsx && \
+     npm version $V -m "chore: release %s"
+   ```
 5. `git push origin main --follow-tags`
 6. Watch the **Publish to npm** workflow in GitHub Actions
 7. Verify the new version on https://www.npmjs.com/package/cachecatch
-8. Smoke test: `npx --yes cachecatch@latest --version`
+8. Smoke test: `npx --yes cachecatch@latest --version` (must print the new version)
