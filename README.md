@@ -2,36 +2,13 @@
 
 **The first prompt-cache audit and optimization tool for AI agents.**
 
-Create your agentic CacheCatch report + your 𝕏 banner, [flex it right now ↗︎](https://cachecatch.spielos.xyz/)
+1. Run audit → 2. Run share → 3. Post on 𝕏
+
+`npx cachecatch@latest audit local --window 7d` → `npx --yes cachecatch@latest share --handle @yourname`
+
 [![Sample Agentic CacheCatch Report banner](public/cachecatch-x-share.png)](https://cachecatch.spielos.xyz/#heroCta)
 
-
-Cachecatch was built because we couldn't find a proper cache report on our own observability traces. Nobody else was doing this. So we built it.
-
-Prompt-cache leaks are silent money burns. Stable instructions, tools, policies, and examples get billed like fresh input whenever request-specific data appears too early in the prompt. That shows up as low cache-read tokens, higher latency, and avoidable model spend — at scale.
-
-Cachecatch audits your agent traces, finds prompt-cache breakers, estimates recoverable spend, and gives you exact fixes.
-
-**Run your first report now — it takes 30 seconds:**
-
-```bash
-npx cachecatch@latest audit local --window 7d
-```
-
-Your report ends with a shareable X banner. Post it, show your team what cache costs you.
-
----
-
-## Two reports. One tool.
-
-Cachecatch covers both worlds:
-
-| Report | For who | What it audits |
-| --- | --- | --- |
-| **Local IDE Agent** | Individual developers | Claude Code, Codex, OpenCode session transcripts on your machine |
-| **Platform Trace** | Teams running production agents | LangSmith, Langfuse, Braintrust traces across routes and runs |
-
-Same engine. Same `CachecatchReport` schema. Same X banner.
+Cachecatch audits prompt-cache efficiency across two worlds: **local IDE agent sessions** (Claude Code, Codex, OpenCode on your machine) and **production platform traces** (LangSmith, Langfuse, Braintrust). Same engine, same report schema, same 𝕏 banner. It finds the exact tokens breaking your cache prefix, estimates recoverable spend, and gives you the prompt-layout fix to ship.
 
 ---
 
@@ -43,21 +20,35 @@ Audit your local coding agent sessions — no API key, no network, no config:
 npx cachecatch@latest audit local --window 7d
 ```
 
-What it shows:
+Then generate your 𝕏 banner and share it:
+
+```bash
+npx --yes cachecatch@latest share --handle @yourname
+```
+
+`share` fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. It automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit local`, then `share`. To share a specific report instead, pass its path:
+
+```bash
+npx cachecatch@latest share audit.json --handle @yourname -o ./my-card.png
+npx cachecatch@latest share local-report.json --handle @yourname -o ./my-local-card.png
+```
+
+### What it shows
+
 - Agentic sessions parsed, token activity, tool calls, subagent runs
 - Cache read profile when exact cache-token telemetry is present
 - Context hygiene score (volatile data near prompt prefix)
 - Recoverable cost estimate
 - IDE agents used (Claude Code, Codex, OpenCode)
 
-Expand the window for fuller picture:
+### Expand the window
 
 ```bash
 npx cachecatch@latest audit local --window 30d
 npx cachecatch@latest audit local --window 30d --json ./local-report.json
 ```
 
-Scope to one repo:
+### Scope to one repo
 
 ```bash
 npx cachecatch@latest audit local --project /path/to/repo --window 7d
@@ -74,7 +65,7 @@ Local IDE agents expose different levels of local data:
 
 Cachecatch separates visibility into exact cache telemetry, token telemetry only, transcript context only, and unavailable. It never treats missing cache telemetry as zero, never invents cache-read percentage, and never invents cost upside when the model/pricing/token basis is missing.
 
-Enable future Codex telemetry:
+### Enable Codex telemetry
 
 ```bash
 npx cachecatch@latest init codex
@@ -83,7 +74,7 @@ codex
 npx cachecatch@latest audit local --window 7d
 ```
 
-Enable future Claude Code telemetry:
+### Enable Claude Code telemetry
 
 ```bash
 npx cachecatch@latest init claude
@@ -93,7 +84,7 @@ claude
 npx cachecatch@latest audit local --window 7d
 ```
 
-Debug local telemetry visibility without printing raw prompts:
+### Debug local telemetry
 
 ```bash
 npx cachecatch@latest debug codex-telemetry
@@ -111,26 +102,27 @@ Audit production agent traces from LangSmith, Langfuse, or Braintrust:
 npx cachecatch@latest audit "your-project" --provider langsmith --window 7d
 ```
 
-What it shows:
+### What it shows
+
 - Traces analyzed, routes detected, cache-read rate
 - Estimated recoverable cache loss ($)
 - Top leaking routes with exact fix instructions
 - Prompt layout issues (what's breaking prefix stability)
 
-See which projects your key can access:
+### See which projects your key can access
 
 ```bash
 npx cachecatch@latest projects --provider langsmith
 ```
 
-Set the key once in your shell:
+### Set the key once in your shell
 
 ```bash
 export LANGSMITH_API_KEY="lsv2_..."
 npx cachecatch@latest audit "your-project" --provider langsmith --window 7d
 ```
 
-Langfuse:
+### Langfuse
 
 ```bash
 export LANGFUSE_PUBLIC_KEY="pk-lf-..."
@@ -138,7 +130,7 @@ export LANGFUSE_SECRET_KEY="sk-lf-..."
 npx cachecatch@latest audit "your-project" --provider langfuse --window 7d
 ```
 
-Or pass the key directly:
+### Or pass the key directly
 
 ```bash
 npx cachecatch@latest audit "your-project" --provider langsmith --window 7d --key "$LANGSMITH_API_KEY"
@@ -179,27 +171,6 @@ Or directly from a report:
 
 ```bash
 npx cachecatch@latest sample --out ./cachecatch-report.html
-```
-
----
-
-## Share on X
-
-Every report generates a shareable X banner. Post it to show your cache status:
-
-```bash
-npx --yes cachecatch@latest share --handle @yourname
-```
-
-`--yes` skips the rare npx re-install prompt. This fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. Ready to attach to a post.
-
-`share` automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit` (or `audit local`), then `share`. If you want to share a specific report instead, pass its path:
-
-From a saved report:
-
-```bash
-npx cachecatch@latest share audit.json --handle @yourname -o ./my-card.png
-npx cachecatch@latest share local-report.json --handle @yourname -o ./my-local-card.png
 ```
 
 ---
@@ -268,45 +239,37 @@ All report commands support `--no-color` for plain terminal output.
 - Raw OTLP bodies are not stored unless you explicitly run `npx cachecatch daemon --debug-raw`.
 - The web app path audits server-side; the browser only receives the generated report.
 
----
+### Where data lives
 
-## Development
+Cachecatch is local-first. Your API keys and trace data never leave your machine except to the provider you explicitly point it at.
+
+**Network calls Cachecatch makes:**
+
+| Endpoint | When | What it sends |
+|---|---|---|
+| Your provider (LangSmith / Langfuse / Braintrust) | only during `audit` | your provider API key (read from env or `.env`) |
+| `https://unavatar.io/x/<handle>` | only during `share` | the public X handle you pass (no auth) |
+
+There is no Cachecatch server, no analytics, no phone-home, no cookies, no telemetry from the CLI itself.
+
+**Files Cachecatch writes to your disk:**
+
+| What | Where | Notes |
+|---|---|---|
+| Auto-saved JSON reports | `./reports/cachecatch-*.json` (in the directory you ran the command from) | Gitignored. Contains the report only — no API key. |
+| Exported HTML | `./cachecatch-report.html` (or path from `--out`) | Gitignored. |
+| X card PNG | `./cachecatch-x-share.png` (or path from `--out`) | Visible to you by design. |
+| API keys from `config set-key` | `./.env` (in CWD) | Gitignored. Read on next run. |
+| Local OTel telemetry | `~/.cachecatch/telemetry/<agent>/*.jsonl` | Only if you opt in via `init` + `daemon`. Local token/cost events from your IDE agent sessions. |
+| Daemon PID file | `~/.cachecatch/telemetry/daemon.pid` | Only if you run `daemon`. Auto-cleared on shutdown. |
+| Claude Code OTel env | `~/.cachecatch/claude-code-otel.env` | Only if you run `init claude`. |
+| Codex OTel config | `~/.codex/config.toml` (edited in place) | Only if you run `init codex`. |
+
+To delete everything Cachecatch left on your machine:
 
 ```bash
-npm install
-npm run build
-npm run lint
-npm test
-npm run test:live
-npm run cachecatch -- sample
+rm -rf ./reports ./.env ./cachecatch-x-share*.png ~/.cachecatch
 ```
-
-| Script | Purpose |
-| --- | --- |
-| `npm run dev` | Start the Next.js web app |
-| `npm run build:cli` | Compile the CLI to `dist/index.js` |
-| `npm run build` | Build CLI and web app |
-| `npm run typecheck` | Run TypeScript checks |
-| `npm run lint` | Run ESLint |
-| `npm test` | Run engine, adapter, HTTP plumbing, and CLI tests |
-| `npm run test:live` | Run live provider smoke tests when real keys are set |
-| `npm run cachecatch -- sample` | Run the local CLI |
-
----
-
-## Architecture
-
-```text
-src/
-  bin/        CLI entry point and commands
-  adapters/   LangSmith, Langfuse, Braintrust, and mock provider I/O
-  engine/     Provider-agnostic trace analysis plus local IDE session audit
-  reporting/  Terminal, HTML, and X card renderers
-  types/      Shared CachecatchReport and NormalizedTrace types
-  util/       HTTP and environment helpers
-```
-
-The CLI and web app share the same engine and `CachecatchReport` schema. Provider-specific HTTP code stays in `src/adapters/*`; cache analysis stays provider-agnostic in `src/engine/*`. Local IDE agent scanning is implemented in `src/engine/local-agent-audit.ts` and produces a `LocalAgentReport`. X card banners are generated from `src/reporting/x-card.ts` or `src/reporting/x-card-local.ts` (HTML templates) and `src/reporting/html-to-png.ts` (Puppeteer screenshot).
 
 ---
 
@@ -360,39 +323,83 @@ No spinner or status text is printed in JSON mode.
 
 ---
 
-## Privacy & Where Data Lives
+## Support CacheCatch
 
-Cachecatch is local-first. Your API keys and trace data never leave your machine except to the provider you explicitly point it at.
+CacheCatch is a small tool for finding wasted AI agent token spend, prompt cache misses, and recoverable cost gaps.
 
-**Network calls Cachecatch makes:**
+If it helped you save money, debug your agent workflow, or understand your token usage better, you can support the project here.
 
-| Endpoint | When | What it sends |
-|---|---|---|
-| Your provider (LangSmith / Langfuse / Braintrust) | only during `audit` | your provider API key (read from env or `.env`) |
-| `https://unavatar.io/x/<handle>` | only during `share` | the public X handle you pass (no auth) |
+### Crypto wallets
 
-There is no Cachecatch server, no analytics, no phone-home, no cookies, no telemetry from the CLI itself.
+#### Solana
 
-**Files Cachecatch writes to your disk:**
+**SOL** or **USDT on Solana / SPL**:
 
-| What | Where | Notes |
-|---|---|---|
-| Auto-saved JSON reports | `./reports/cachecatch-*.json` (in the directory you ran the command from) | Gitignored. Contains the report only — no API key. |
-| Exported HTML | `./cachecatch-report.html` (or path from `--out`) | Gitignored. |
-| X card PNG | `./cachecatch-x-share1.png` (or path from `--out`) | Visible to you by design. |
-| API keys from `config set-key` | `./.env` (in CWD) | Gitignored. Read on next run. |
-| Local OTel telemetry | `~/.cachecatch/telemetry/<agent>/*.jsonl` | Only if you opt in via `init` + `daemon`. Local token/cost events from your IDE agent sessions. |
-| Daemon PID file | `~/.cachecatch/telemetry/daemon.pid` | Only if you run `daemon`. Auto-cleared on shutdown. |
-| Claude Code OTel env | `~/.cachecatch/claude-code-otel.env` | Only if you run `init claude`. |
-| Codex OTel config | `~/.codex/config.toml` (edited in place) | Only if you run `init codex`. |
-
-To delete everything Cachecatch left on your machine:
-
-```bash
-rm -rf ./reports ./.env ./cachecatch-x-share*.png ~/.cachecatch
+```text
+r4yxhFNtnSrZi9YSTpH326WavHengxbFTmfo7Ud1M81
 ```
 
-To fully uninstall (including npx's cached copy) and re-test the latest published version from scratch:
+#### Ethereum
+
+**ETH** or **USDT on Ethereum / ERC-20**:
+
+```text
+0xC3B39db02BF5D3fEFaAdd0FD1AE687B3f3F48713
+```
+
+#### TON
+
+**TON** or **USDT on TON**:
+
+```text
+UQAeQz7NomoaAAXlG4-XDifSQ7QC5DSqVr19QvfnqctvTJsq
+```
+
+---
+
+## Development
+
+```bash
+npm install
+npm run build
+npm run lint
+npm test
+npm run test:live
+npm run cachecatch -- sample
+```
+
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Start the Next.js web app |
+| `npm run build:cli` | Compile the CLI to `dist/index.js` |
+| `npm run build` | Build CLI and web app |
+| `npm run typecheck` | Run TypeScript checks |
+| `npm run lint` | Run ESLint |
+| `npm test` | Run engine, adapter, HTTP plumbing, and CLI tests |
+| `npm run test:live` | Run live provider smoke tests when real keys are set |
+| `npm run cachecatch -- sample` | Run the local CLI |
+
+---
+
+## Architecture
+
+```text
+src/
+  bin/        CLI entry point and commands
+  adapters/   LangSmith, Langfuse, Braintrust, and mock provider I/O
+  engine/     Provider-agnostic trace analysis plus local IDE session audit
+  reporting/  Terminal, HTML, and X card renderers
+  types/      Shared CachecatchReport and NormalizedTrace types
+  util/       HTTP and environment helpers
+```
+
+The CLI and web app share the same engine and `CachecatchReport` schema. Provider-specific HTTP code stays in `src/adapters/*`; cache analysis stays provider-agnostic in `src/engine/*`. Local IDE agent scanning is implemented in `src/engine/local-agent-audit.ts` and produces a `LocalAgentReport`. X card banners are generated from `src/reporting/x-card.ts` or `src/reporting/x-card-local.ts` (HTML templates) and `src/reporting/html-to-png.ts` (Puppeteer screenshot).
+
+---
+
+## Uninstall / Re-test from 0
+
+To fully wipe Cachecatch and re-test a freshly published version:
 
 ```bash
 # Wipe local + HOME files
