@@ -1,3 +1,4 @@
+import chalk from "chalk"
 import { sampleReport } from "@/lib/cachecatch/sample-data"
 import { ansiToHtml } from "@/src/reporting/ansi-html"
 import {
@@ -8,6 +9,8 @@ import {
   renderTopLeaksTable,
   renderRouteDiagnostic,
 } from "@/src/reporting/terminal-report"
+
+chalk.level = 2
 
 const divider = "─".repeat(96)
 

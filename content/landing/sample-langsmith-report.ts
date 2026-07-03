@@ -5,6 +5,7 @@
  * and exports the resulting HTML sections so page.tsx stays clean.
  */
 
+import chalk from "chalk"
 import { sampleReport } from "@/lib/cachecatch/sample-data"
 import { ansiToHtml } from "@/src/reporting/ansi-html"
 import {
@@ -23,6 +24,7 @@ import {
   setTerminalWidth,
 } from "@/src/reporting/terminal-report"
 
+chalk.level = 2
 setTerminalWidth(104)
 
 const sections = [
