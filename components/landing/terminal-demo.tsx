@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { demo } from "@/content/landing/copy"
 
 interface TabContent {
   sections: string[]
@@ -14,17 +15,21 @@ interface TerminalDemoProps {
 
 type TabId = string
 
-const TAB_ORDER = ["agents", "langsmith"]
+const TAB_ORDER = ["agents", "langsmith"] as const
+
+const TAB_LABELS: Record<TabId, string> = {
+  agents: "Agents Cache Report",
+  langsmith: "LangSmith Cache Report",
+}
 
 export function TerminalDemo({ tabs, defaultTab = "agents" }: TerminalDemoProps) {
   const shellRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const playedRef = useRef(false)
-  const timersRef = useRef<Array<ReturnType<typeof setTimeout>>>([])
-  const [revealedCount, setRevealedCount] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab)
+  const [revealKey, setRevealKey] = useState(0)
 
   const { sections, prompt } = tabs[activeTab] ?? { sections: [], prompt: "" }
 
@@ -36,15 +41,13 @@ export function TerminalDemo({ tabs, defaultTab = "agents" }: TerminalDemoProps)
   const reveal = useCallback(() => {
     if (playedRef.current) return
     playedRef.current = true
-    setRevealedCount(0)
     if (prefersReducedMotion) {
-      setRevealedCount(sections.length)
       setIsGenerating(false)
       setIsComplete(true)
       return
     }
     setIsGenerating(true)
-  }, [prefersReducedMotion, sections.length])
+  }, [prefersReducedMotion])
 
   useEffect(() => {
     const shell = shellRef.current
@@ -65,8 +68,7 @@ export function TerminalDemo({ tabs, defaultTab = "agents" }: TerminalDemoProps)
         entries.forEach((entry) => {
           if (entry.isIntersecting && !playedRef.current) {
             const delay = entry.intersectionRatio > 0.55 ? 40 : 90
-            const timer = setTimeout(() => reveal(), delay)
-            timersRef.current.push(timer)
+            setTimeout(() => reveal(), delay)
           }
         })
       },
@@ -80,69 +82,46 @@ export function TerminalDemo({ tabs, defaultTab = "agents" }: TerminalDemoProps)
       shell.removeEventListener("focus", onFocus)
       shell.removeEventListener("click", onClick)
       observer.disconnect()
-      for (const timer of timersRef.current) clearTimeout(timer)
-      timersRef.current = []
     }
   }, [reveal])
 
   useEffect(() => {
-    if (!playedRef.current && sections.length > 0) {
-      const timer = setTimeout(() => reveal(), 60)
-      timersRef.current.push(timer)
-    }
-  }, [activeTab, sections.length, reveal])
-
-  useEffect(() => {
     if (!isGenerating) return
+    const DURATION = 2200
+    const start = performance.now()
+    let raf: number
+    const body = bodyRef.current
 
-    for (const timer of timersRef.current) clearTimeout(timer)
-    timersRef.current = []
-
-    const delays = [45, 95, 85, 80, 75, 70, 65, 60]
-    let index = 0
-
-    const tick = () => {
-      index += 1
-      setRevealedCount(index)
-      if (index >= sections.length) {
+    const tick = (now: number) => {
+      const elapsed = now - start
+      const progress = Math.min(elapsed / DURATION, 1)
+      const ease = 1 - Math.pow(1 - progress, 3)
+      if (body) {
+        body.style.clipPath = `inset(0 0 ${(1 - ease) * 100}% 0)`
+      }
+      if (progress < 1) {
+        raf = requestAnimationFrame(tick)
+      } else {
+        if (body) body.style.clipPath = "none"
         setIsGenerating(false)
         setIsComplete(true)
-        return
       }
-      const timer = setTimeout(tick, delays[Math.min(index, delays.length - 1)])
-      timersRef.current.push(timer)
     }
 
-    const startTimer = setTimeout(tick, delays[0])
-    timersRef.current.push(startTimer)
-
-    return () => {
-      for (const timer of timersRef.current) clearTimeout(timer)
-      timersRef.current = []
-    }
-  }, [isGenerating, prefersReducedMotion, sections.length])
-
-  useEffect(() => {
-    const body = bodyRef.current
-    if (!body || revealedCount === 0 || prefersReducedMotion) return
-
-    body.scrollTo({
-      top: body.scrollHeight,
-      behavior: "smooth",
-    })
-  }, [prefersReducedMotion, revealedCount])
-
-  const visibleSections = sections.slice(0, revealedCount)
+    if (body) body.style.clipPath = "inset(0 0 100% 0)"
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isGenerating, prefersReducedMotion])
 
   const handleTabSwitch = useCallback((tabId: TabId) => {
     if (tabId === activeTab) return
-    for (const timer of timersRef.current) clearTimeout(timer)
-    timersRef.current = []
     playedRef.current = false
-    setRevealedCount(0)
     setIsGenerating(false)
     setIsComplete(false)
+    setRevealKey((k) => k + 1)
     setActiveTab(tabId)
+    const body = bodyRef.current
+    if (body) body.style.clipPath = "none"
   }, [activeTab])
 
   return (
@@ -163,7 +142,7 @@ export function TerminalDemo({ tabs, defaultTab = "agents" }: TerminalDemoProps)
               className={`chrome-tab ${activeTab === tabId ? "is-active" : ""}`}
               onClick={() => handleTabSwitch(tabId)}
             >
-              <span className="chrome-tab-content">{tabId === "agents" ? "Agents Cache Report" : "LangSmith Cache Report"}</span>
+              <span className="chrome-tab-content">{TAB_LABELS[tabId]}</span>
             </button>
           ))}
         </div>
@@ -177,9 +156,9 @@ export function TerminalDemo({ tabs, defaultTab = "agents" }: TerminalDemoProps)
       >
         <div className="terminal-report-frame">
           <div className="terminal-report-stream">
-            {visibleSections.map((sectionHtml, index) => (
+            {sections.map((sectionHtml, index) => (
               <div
-                key={`${index}-${sectionHtml.length}`}
+                key={`${revealKey}-${index}-${sectionHtml.length}`}
                 className="terminal-report-section is-visible"
               >
                 <div className="terminal-report-inner" dangerouslySetInnerHTML={{ __html: sectionHtml }} />
@@ -195,7 +174,7 @@ export function TerminalDemo({ tabs, defaultTab = "agents" }: TerminalDemoProps)
           </div>
         </div>
       </div>
-      <div className="terminal-hint">Summarized from sample data used by `cachecatch sample` and `cachecatch audit local`.</div>
+      <div className="terminal-hint">{demo.hint}</div>
     </div>
   )
 }

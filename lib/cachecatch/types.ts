@@ -22,23 +22,9 @@ export type {
   CachecatchReport,
 } from "../../src/types/index.js"
 
-// Legacy aliases — `NormalizedRun` and `TokenTelemetry` were
-// renamed to `NormalizedTrace` and absorbed into the
-// `NormalizedTrace.metrics` shape. The web app's existing UI
-// components still expect these names, so we re-derive them
-// from the new types.
+// Legacy aliases — `NormalizedRun` was renamed to `NormalizedTrace`.
+// The web app's existing UI components still expect this name.
 import type { NormalizedTrace } from "../../src/types/index.js"
 
 /** @deprecated use NormalizedTrace */
 export type NormalizedRun = NormalizedTrace
-
-/** @deprecated tokens are now fields on NormalizedTrace.metrics */
-export type TokenTelemetry = {
-  inputTokens?: number
-  outputTokens?: number
-  totalTokens?: number
-  cacheReadTokens?: number
-  cacheCreationTokens?: number
-  rawInputTokenDetails?: Record<string, unknown>
-  rawUsage?: Record<string, unknown>
-}

@@ -2,10 +2,9 @@
 
 ## Overview
 
-Cachecatch is a **Prompt CacheOps** tool. It audits LLM-traced runs across
-multiple observability providers (LangSmith, Langfuse, Braintrust) and local
-IDE agent sessions (Claude Code, Codex, OpenCode), detects prompt-cache
-breakers, estimates wasted spend, and gives exact fixes.
+Cachecatch is the **first prompt-cache audit and optimization tool for AI agents**. It covers both local IDE agent sessions (Claude Code, Codex, OpenCode) and production platform traces (LangSmith, Langfuse, Braintrust).
+
+Cachecatch audits traces, detects prompt-cache breakers, estimates recoverable token spend, and gives exact fixes — route by route, prompt layout by prompt layout.
 
 It ships as **both** a CLI-first infrastructure tool and a Next.js web
 app. The CLI and the web app share one engine, one set of adapters, and
@@ -90,7 +89,8 @@ npx cachecatch config set-key langsmith <key>   # persist API key to .env
 
 ```bash
 npm run dev               # Next.js dev server (web app)
-npm run build             # Production build
+npm run build:cli         # Compile the CLI to dist/index.js
+npm run build             # Build CLI and web app
 npm run typecheck         # tsc --noEmit (strict)
 npm run lint              # ESLint
 npm test                  # Run all unit tests

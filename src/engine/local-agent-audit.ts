@@ -3,6 +3,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, extname, join, resolve } from "node:path"
 import type {
+  AgentTelemetrySource,
+  AgentTelemetryVisibility,
   AuditWindow,
   Confidence,
   LocalAgentFinding,
@@ -10,6 +12,8 @@ import type {
   LocalAgentProvider,
   LocalAgentRecommendation,
   LocalAgentReport,
+  Metric,
+  NormalizedAgentTelemetry,
 } from "../types/index.ts"
 import { approximateTokens } from "./tokens.ts"
 
@@ -37,8 +41,18 @@ interface LocalSession {
     outputTokens: number
     cacheReadTokens: number
     cacheWriteTokens: number
+    cachedInputTokens: number
+    cacheCreationTokens: number
     costUsd: number | null
     tokenAccounting: "observed" | "estimated"
+    hasTokenTelemetry: boolean
+    hasCacheTelemetry: boolean
+    cacheFieldPresent: boolean
+    costFieldPresent: boolean
+    cacheReadDenominatorTokens: number | null
+    source: AgentTelemetrySource
+    visibility: AgentTelemetryVisibility
+    confidenceNotes: string[]
   }
 }
 
@@ -82,6 +96,7 @@ interface ParseResult {
   projectPath?: string
   subagent?: string
   toolCalls?: number
+  telemetry?: NormalizedAgentTelemetry
 }
 
 interface ModelPricing {
@@ -215,10 +230,13 @@ function classifyCandidate(path: string): CandidateType {
 }
 
 function detectRoots(): AgentRoot[] {
-  const home = homedir()
+  const home = process.env.CACHECATCH_TEST_HOME || homedir()
   const roots: AgentRoot[] = [
     { agent: "claude-code", path: join(home, ".claude", "projects") },
     { agent: "codex", path: join(home, ".codex", "sessions") },
+    { agent: "codex", path: join(home, ".codex", "archived_sessions") },
+    { agent: "codex", path: join(home, ".cachecatch", "telemetry", "codex") },
+    { agent: "claude-code", path: join(home, ".cachecatch", "telemetry", "claude-code") },
     { agent: "opencode", path: join(home, ".local", "share", "opencode") },
   ]
   const claudeConfig = process.env.CLAUDE_CONFIG_DIR
@@ -307,6 +325,483 @@ function parseJsonFile(raw: string): { objects: unknown[]; malformed: number } {
   }
 }
 
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+function normalizeFieldName(key: string): string {
+  return key.replace(/[^a-z0-9]/gi, "").toLowerCase()
+}
+
+interface FieldHit {
+  path: string
+  key: string
+  value: number
+}
+
+function walkNumericFields(value: unknown, out: FieldHit[], path = "", depth = 0): void {
+  if (depth > 10 || value === null || value === undefined) return
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => walkNumericFields(item, out, `${path}[${index}]`, depth + 1))
+    return
+  }
+  if (typeof value !== "object") return
+  const obj = value as Record<string, unknown>
+  for (const [key, child] of Object.entries(obj)) {
+    const childPath = path ? `${path}.${key}` : key
+    const number = asNumber(child)
+    if (number !== undefined) out.push({ path: childPath, key, value: number })
+    walkNumericFields(child, out, childPath, depth + 1)
+  }
+}
+
+function readPath(value: unknown, path: string): unknown {
+  let current = value
+  for (const part of path.split(".")) {
+    if (!current || typeof current !== "object") return undefined
+    current = (current as Record<string, unknown>)[part]
+  }
+  return current
+}
+
+function candidateSessionId(record: Record<string, unknown>, fallback: string): string {
+  const candidates = [
+    record.session_id,
+    record.sessionId,
+    readPath(record, "session.id"),
+    readPath(record, "payload.session_id"),
+    readPath(record, "payload.session.id"),
+    readPath(record, "conversation_id"),
+    readPath(record, "payload.conversation_id"),
+    readPath(record, "run_id"),
+    readPath(record, "request_id"),
+  ]
+  return candidates.map(asString).find(Boolean) ?? fallback
+}
+
+function telemetrySource(provider: LocalAgentProvider, type: CandidateType, eventTypes: Set<string>): AgentTelemetrySource {
+  if (type === "sqlite") return "local_db"
+  const joined = Array.from(eventTypes).join(" ").toLowerCase()
+  if (/otel|claude_code\.|response\.completed|codex\.sse_event|token\.usage/.test(joined)) {
+    if (/metric|token\.usage/.test(joined)) return "otel_metrics"
+    return "otel_logs"
+  }
+  if (provider === "codex" || provider === "claude-code") return "local_jsonl"
+  return type === "json" || type === "jsonl" ? "local_jsonl" : "transcript"
+}
+
+interface TokenBucket {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  cacheWriteTokens: number
+  cachedInputTokens: number
+  costUsd: number
+  requestCount: number
+  errorCount: number
+  fields: Set<string>
+  models: Set<string>
+  inputTokensMeaning: "uncached_only" | "total_input_including_cached" | "unknown"
+  cachedInputMeaning: "separate_cache_read" | "subset_of_input" | "unknown"
+  tokenEventMode?: "cumulative" | "per_turn" | "mixed" | "none"
+  normalizedRows: string[]
+  duplicateEvents: number
+}
+
+type NumericTokenBucketKey =
+  | "inputTokens"
+  | "outputTokens"
+  | "totalTokens"
+  | "cacheReadTokens"
+  | "cacheCreationTokens"
+  | "cacheWriteTokens"
+  | "cachedInputTokens"
+  | "costUsd"
+  | "requestCount"
+  | "errorCount"
+
+function emptyBucket(): TokenBucket {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    cacheWriteTokens: 0,
+    cachedInputTokens: 0,
+    costUsd: 0,
+    requestCount: 0,
+    errorCount: 0,
+    fields: new Set<string>(),
+    models: new Set<string>(),
+    inputTokensMeaning: "unknown",
+    cachedInputMeaning: "unknown",
+    tokenEventMode: "none",
+    normalizedRows: [],
+    duplicateEvents: 0,
+  }
+}
+
+function addField(bucket: TokenBucket, canonical: NumericTokenBucketKey, hit: FieldHit, value = hit.value): void {
+  if (!Number.isFinite(value)) return
+  bucket[canonical] += value
+  bucket.fields.add(`${canonical}:${hit.path}`)
+}
+
+function canonicalTokenField(hit: FieldHit): NumericTokenBucketKey | undefined {
+  const key = normalizeFieldName(hit.key)
+  const path = normalizeFieldName(hit.path)
+  if (/costusd|usd|amountusd/.test(key) && /cost/.test(path)) return "costUsd"
+  if (/errorcount|errors/.test(key)) return "errorCount"
+  if (/requestcount|requests/.test(key)) return "requestCount"
+  if (/cacheread|cachedtokens|cachedinput|cachedinputtokens/.test(path)) {
+    return /prompttokensdetails|inputtokensdetails/.test(path) && key !== "cachedtokens"
+      ? undefined
+      : /cachecreation|cachewrite/.test(path)
+        ? undefined
+        : key === "totalTokens"
+          ? undefined
+          : "cacheReadTokens"
+  }
+  if (/cachecreation|cachewrite|cachewritetokens|cachecreationtokens/.test(path)) {
+    return /write/.test(path) ? "cacheWriteTokens" : "cacheCreationTokens"
+  }
+  if (/inputtokens|prompttokens|tokensinput/.test(path) && !/cached|cache/.test(path)) return "inputTokens"
+  if (/outputtokens|completiontokens|tokensoutput/.test(path) && !/reasoning/.test(path)) return "outputTokens"
+  if (/reasoningoutput|reasoningtokens|tokensreasoning/.test(path)) return "outputTokens"
+  if (/totaltokens|tokenstotal/.test(path)) return "totalTokens"
+  return undefined
+}
+
+function hasNumericPath(value: unknown, path: string): boolean {
+  return asNumber(readPath(value, path)) !== undefined
+}
+
+function preferredUsagePayload(record: Record<string, unknown>): {
+  value: Record<string, unknown> | undefined
+  modeHint: "cumulative" | "per_turn" | undefined
+  sourcePath?: string
+} {
+  const payload = record.payload && typeof record.payload === "object" ? record.payload as Record<string, unknown> : undefined
+  const info = payload?.info && typeof payload.info === "object" ? payload.info as Record<string, unknown> : undefined
+  if (info?.last_token_usage && typeof info.last_token_usage === "object") {
+    return { value: info.last_token_usage as Record<string, unknown>, modeHint: "per_turn", sourcePath: "payload.info.last_token_usage" }
+  }
+  if (payload?.last_token_usage && typeof payload.last_token_usage === "object") {
+    return { value: payload.last_token_usage as Record<string, unknown>, modeHint: "per_turn", sourcePath: "payload.last_token_usage" }
+  }
+  if (record.last_token_usage && typeof record.last_token_usage === "object") {
+    return { value: record.last_token_usage as Record<string, unknown>, modeHint: "per_turn", sourcePath: "last_token_usage" }
+  }
+  const tokenCount = record.token_count ?? payload?.token_count
+  if (tokenCount && typeof tokenCount === "object") {
+    return { value: tokenCount as Record<string, unknown>, modeHint: undefined, sourcePath: payload?.token_count ? "payload.token_count" : "token_count" }
+  }
+  if (info?.total_token_usage && typeof info.total_token_usage === "object") {
+    return { value: info.total_token_usage as Record<string, unknown>, modeHint: "cumulative", sourcePath: "payload.info.total_token_usage" }
+  }
+  if (payload?.total_token_usage && typeof payload.total_token_usage === "object") {
+    return { value: payload.total_token_usage as Record<string, unknown>, modeHint: "cumulative", sourcePath: "payload.total_token_usage" }
+  }
+  if (record.usage && typeof record.usage === "object") {
+    return { value: record.usage as Record<string, unknown>, modeHint: "per_turn", sourcePath: "usage" }
+  }
+  if (payload?.usage && typeof payload.usage === "object") {
+    return { value: payload.usage as Record<string, unknown>, modeHint: "per_turn", sourcePath: "payload.usage" }
+  }
+  const responseUsage = readPath(record, "response.usage")
+  if (responseUsage && typeof responseUsage === "object") {
+    return { value: responseUsage as Record<string, unknown>, modeHint: "per_turn", sourcePath: "response.usage" }
+  }
+  const turnUsage = readPath(record, "turn.token_usage")
+  if (turnUsage && typeof turnUsage === "object") {
+    return { value: turnUsage as Record<string, unknown>, modeHint: "per_turn", sourcePath: "turn.token_usage" }
+  }
+  return { value: undefined, modeHint: undefined }
+}
+
+function applyUsageSemantics(bucket: TokenBucket, value: Record<string, unknown>, sourcePath?: string): void {
+  const path = sourcePath ?? ""
+  if (/last_token_usage|total_token_usage|token_count|turn\.token_usage/.test(path)) {
+    bucket.inputTokensMeaning = "total_input_including_cached"
+    bucket.cachedInputMeaning = "subset_of_input"
+  }
+  if (hasNumericPath(value, "input_tokens_details.cached_tokens") || hasNumericPath(value, "prompt_tokens_details.cached_tokens")) {
+    bucket.inputTokensMeaning = "total_input_including_cached"
+    bucket.cachedInputMeaning = "subset_of_input"
+  }
+  if (hasNumericPath(value, "cached_input") || hasNumericPath(value, "cached_input_tokens")) {
+    bucket.inputTokensMeaning = bucket.inputTokensMeaning === "unknown" ? "total_input_including_cached" : bucket.inputTokensMeaning
+    bucket.cachedInputMeaning = bucket.cachedInputMeaning === "unknown" ? "subset_of_input" : bucket.cachedInputMeaning
+  }
+}
+
+function tokenTypeFromRecord(record: Record<string, unknown>): string | undefined {
+  return [
+    record.token_type,
+    record.tokenType,
+    record.type,
+    readPath(record, "payload.token_type"),
+    readPath(record, "payload.tokenType"),
+    readPath(record, "attributes.type"),
+    readPath(record, "attributes.token_type"),
+  ].map(asString).find(Boolean)
+}
+
+function valueFromMetricRecord(record: Record<string, unknown>): number | undefined {
+  const candidates = [
+    record.value,
+    record.count,
+    record.sum,
+    readPath(record, "payload.value"),
+    readPath(record, "metric.value"),
+    readPath(record, "attributes.value"),
+  ]
+  return candidates.map(asNumber).find((value) => value !== undefined)
+}
+
+function addTypedMetric(bucket: TokenBucket, record: Record<string, unknown>): boolean {
+  const tokenType = tokenTypeFromRecord(record)
+  const value = valueFromMetricRecord(record)
+  if (!tokenType || value === undefined) return false
+  const normalized = normalizeFieldName(tokenType)
+  const hit = { key: tokenType, path: `token_type:${tokenType}`, value }
+  if (normalized === "input") addField(bucket, "inputTokens", hit)
+  else if (normalized === "output" || normalized === "reasoningoutput") addField(bucket, "outputTokens", hit)
+  else if (normalized === "cacheread" || normalized === "cachedinput") addField(bucket, "cacheReadTokens", hit)
+  else if (normalized === "cachecreation" || normalized === "cachewrite") addField(bucket, "cacheCreationTokens", hit)
+  else if (normalized === "total") addField(bucket, "totalTokens", hit)
+  else return false
+  return true
+}
+
+function tokenCountPayload(record: Record<string, unknown>): Record<string, unknown> | undefined {
+  const payload = record.payload && typeof record.payload === "object" ? record.payload as Record<string, unknown> : undefined
+  const type = [record.type, payload?.type, record.event, record.event_msg].map(asString).join(" ")
+  const preferred = preferredUsagePayload(record)
+  if (!/token_count|token usage|token_usage/.test(type) && !preferred.value) return undefined
+  return preferred.value ?? record
+}
+
+function simpleBucketFromValue(value: unknown, sourcePath?: string): TokenBucket {
+  const bucket = emptyBucket()
+  const hits: FieldHit[] = []
+  walkNumericFields(value, hits)
+  for (const hit of hits) {
+    const canonical = canonicalTokenField(hit)
+    if (canonical) addField(bucket, canonical, hit)
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    applyUsageSemantics(bucket, value as Record<string, unknown>, sourcePath)
+  }
+  return bucket
+}
+
+function isNonDecreasingSequence(values: number[]): boolean {
+  if (values.length < 2) return false
+  return values.every((value, index) => index === 0 || value >= values[index - 1])
+}
+
+function aggregateCodexTokenCounts(records: Array<Record<string, unknown>>): TokenBucket {
+  const aggregate = emptyBucket()
+  const groups = new Map<string, Array<{ index: number; bucket: TokenBucket }>>()
+  const seenRows = new Set<string>()
+  records.forEach((record, index) => {
+    const preferred = preferredUsagePayload(record)
+    const payload = preferred.value
+    if (!payload) return
+    const bucket = simpleBucketFromValue(payload, preferred.sourcePath)
+    if (bucket.fields.size === 0) return
+    const sessionId = candidateSessionId(record, "unknown")
+    const model = Array.from(bucket.models)[0] ?? asString(readPath(record, "payload.info.model")) ?? asString(readPath(record, "payload.turn_context.model")) ?? asString(readPath(record, "turn_context.model")) ?? asString(record.model) ?? "unknown"
+    const timestamp = asString(record.timestamp) ?? String(index)
+    const rowKey = `${sessionId}:${model}:${timestamp}:${bucket.inputTokens}:${bucket.outputTokens}:${bucket.cacheReadTokens}:${bucket.cacheCreationTokens}:${bucket.cacheWriteTokens}:${preferred.sourcePath ?? "usage"}`
+    if (seenRows.has(rowKey)) {
+      aggregate.duplicateEvents += 1
+      return
+    }
+    seenRows.add(rowKey)
+    bucket.tokenEventMode = preferred.modeHint ?? "none"
+    const key = `${sessionId}:${model}`
+    const items = groups.get(key) ?? []
+    items.push({ index, bucket })
+    groups.set(key, items)
+  })
+
+  for (const items of groups.values()) {
+    items.sort((a, b) => a.index - b.index)
+    const fieldNames: NumericTokenBucketKey[] = [
+      "inputTokens",
+      "outputTokens",
+      "totalTokens",
+      "cacheReadTokens",
+      "cacheCreationTokens",
+      "cacheWriteTokens",
+      "cachedInputTokens",
+    ]
+    const modeHints = new Set(items.map((item) => item.bucket.tokenEventMode).filter((mode) => mode && mode !== "none"))
+    const cumulative = modeHints.has("per_turn")
+      ? false
+      : modeHints.has("cumulative")
+        ? true
+        : fieldNames.some((field) => isNonDecreasingSequence(items.map((item) => item.bucket[field]).filter((value) => value > 0)))
+    aggregate.tokenEventMode = aggregate.tokenEventMode === "none"
+      ? (cumulative ? "cumulative" : "per_turn")
+      : aggregate.tokenEventMode === (cumulative ? "cumulative" : "per_turn")
+        ? aggregate.tokenEventMode
+        : "mixed"
+    const previous = emptyBucket()
+    for (const [itemIndex, item] of items.entries()) {
+      let rowInput = 0
+      let rowOutput = 0
+      let rowCacheRead = 0
+      let rowCacheWrite = 0
+      for (const field of fieldNames) {
+        const raw = item.bucket[field]
+        if (raw <= 0) continue
+        const value = cumulative ? (itemIndex === 0 ? 0 : Math.max(0, raw - previous[field])) : raw
+        aggregate[field] += value
+        if (field === "inputTokens") rowInput += value
+        if (field === "outputTokens") rowOutput += value
+        if (field === "cacheReadTokens" || field === "cachedInputTokens") rowCacheRead += value
+        if (field === "cacheCreationTokens" || field === "cacheWriteTokens") rowCacheWrite += value
+        previous[field] = raw
+      }
+      for (const field of item.bucket.fields) aggregate.fields.add(`${field}${cumulative ? " (delta)" : ""}`)
+      if (item.bucket.inputTokensMeaning !== "unknown") aggregate.inputTokensMeaning = item.bucket.inputTokensMeaning
+      if (item.bucket.cachedInputMeaning !== "unknown") aggregate.cachedInputMeaning = item.bucket.cachedInputMeaning
+      aggregate.normalizedRows.push(`mode=${cumulative ? "cumulative-delta" : "per-turn"} input=${rowInput} cache_read=${rowCacheRead} output=${rowOutput} cache_write=${rowCacheWrite}`)
+    }
+  }
+  return aggregate
+}
+
+function aggregateTelemetry(
+  provider: LocalAgentProvider,
+  type: CandidateType,
+  records: Array<Record<string, unknown>>,
+  eventTypes: Set<string>
+): NormalizedAgentTelemetry {
+  const generic = emptyBucket()
+  const codexTokenCounts = provider === "codex" ? aggregateCodexTokenCounts(records) : emptyBucket()
+  const seenRequestKeys = new Set<string>()
+
+  for (const record of records) {
+    collectModels(record, generic.models)
+    const eventName = [
+      record.type,
+      record.event,
+      record.eventType,
+      readPath(record, "payload.type"),
+      readPath(record, "name"),
+      readPath(record, "metric.name"),
+    ].map(asString).filter(Boolean).join(" ")
+    if (/error|exception|failed/i.test(eventName)) generic.errorCount += 1
+    if (/api_request|response\.completed|request|run|token_count/i.test(eventName)) {
+      const key = `${candidateSessionId(record, "unknown")}:${asString(record.request_id) ?? ""}:${asString(record.model) ?? ""}:${asString(record.timestamp) ?? ""}`
+      if (!seenRequestKeys.has(key)) {
+        seenRequestKeys.add(key)
+        generic.requestCount += 1
+      }
+    }
+    if (/claude_code\.token\.usage|token\.usage|metric/i.test(eventName)) {
+      addTypedMetric(generic, record)
+    }
+    if (provider === "codex" && tokenCountPayload(record)) continue
+    const hits: FieldHit[] = []
+    walkNumericFields(record, hits)
+    for (const hit of hits) {
+      const canonical = canonicalTokenField(hit)
+      if (canonical) {
+        addField(generic, canonical, hit)
+        const normalizedPath = normalizeFieldName(hit.path)
+        if (/inputtokensdetailscachedtokens|prompttokensdetailscachedtokens/.test(normalizedPath)) {
+          generic.inputTokensMeaning = "total_input_including_cached"
+          generic.cachedInputMeaning = "subset_of_input"
+        } else if (/cachereadtokens|cachecreationtokens|cachewritetokens/.test(normalizedPath)) {
+          generic.inputTokensMeaning = generic.inputTokensMeaning === "unknown" ? "uncached_only" : generic.inputTokensMeaning
+          generic.cachedInputMeaning = generic.cachedInputMeaning === "unknown" ? "separate_cache_read" : generic.cachedInputMeaning
+        }
+      }
+    }
+  }
+
+  for (const field of ["inputTokens", "outputTokens", "totalTokens", "cacheReadTokens", "cacheCreationTokens", "cacheWriteTokens", "cachedInputTokens"] as const) {
+    generic[field] += codexTokenCounts[field]
+  }
+  for (const field of codexTokenCounts.fields) generic.fields.add(field)
+  if (codexTokenCounts.inputTokensMeaning !== "unknown") generic.inputTokensMeaning = codexTokenCounts.inputTokensMeaning
+  if (codexTokenCounts.cachedInputMeaning !== "unknown") generic.cachedInputMeaning = codexTokenCounts.cachedInputMeaning
+  generic.duplicateEvents += codexTokenCounts.duplicateEvents
+  generic.normalizedRows.push(...codexTokenCounts.normalizedRows)
+  if (codexTokenCounts.tokenEventMode && codexTokenCounts.tokenEventMode !== "none") generic.tokenEventMode = codexTokenCounts.tokenEventMode
+
+  const cacheReadTokens = generic.cacheReadTokens + generic.cachedInputTokens
+  const cacheWriteTokens = generic.cacheWriteTokens + generic.cacheCreationTokens
+  const fields = Array.from(generic.fields)
+  const hasTokenTelemetry = generic.inputTokens > 0 || generic.outputTokens > 0 || generic.totalTokens > 0 || fields.some((field) => /inputTokens|outputTokens|totalTokens/.test(field))
+  const hasCacheTelemetry = fields.some((field) => /cacheReadTokens|cachedInputTokens|cacheCreationTokens|cacheWriteTokens/.test(field))
+  const source = telemetrySource(provider, type, eventTypes)
+  const visibility: AgentTelemetryVisibility = hasCacheTelemetry
+    ? "exact_cache_telemetry"
+    : hasTokenTelemetry
+      ? "token_telemetry_only"
+      : "unavailable"
+  const inputBasis = hasCacheTelemetry
+    ? generic.cachedInputMeaning === "subset_of_input"
+      ? generic.inputTokens
+      : generic.cachedInputMeaning === "separate_cache_read"
+        ? generic.inputTokens + cacheReadTokens + cacheWriteTokens
+        : null
+    : null
+  const cacheReadRate = hasCacheTelemetry && inputBasis && inputBasis > 0 ? cacheReadTokens / inputBasis : null
+  const notes = fields.slice(0, 12)
+  if (visibility === "token_telemetry_only") notes.push("Token totals were explicit, but no cache-read/cache-creation fields were observed.")
+  if (visibility === "exact_cache_telemetry" && cacheReadRate !== null) notes.push(`Cache-read rate uses explicit cache token fields only; cached input semantics: ${generic.cachedInputMeaning}.`)
+  if (visibility === "exact_cache_telemetry" && cacheReadRate === null) notes.push("Cache token fields were found, but input/cache denominator semantics are unclear; cache-read percent is suppressed.")
+  if (generic.tokenEventMode && generic.tokenEventMode !== "none") notes.push(`Token event aggregation mode: ${generic.tokenEventMode}.`)
+  if (generic.duplicateEvents > 0) notes.push(`Duplicate token event rows skipped: ${generic.duplicateEvents}.`)
+  for (const row of generic.normalizedRows.slice(0, 5)) notes.push(`Normalized token row: ${row}.`)
+
+  return {
+    agent: provider,
+    source,
+    visibility,
+    sessions: 1,
+    runs: Math.max(1, generic.requestCount),
+    modelCounts: Array.from(generic.models).reduce<Record<string, number>>((acc, model) => {
+      acc[model] = (acc[model] ?? 0) + 1
+      return acc
+    }, {}),
+    toolCalls: records.filter((record) => /tool|function_call/i.test([record.type, record.event, readPath(record, "payload.type")].map(asString).join(" "))).length,
+    subagentRuns: records.filter((record) => /subagent/i.test(JSON.stringify(record).slice(0, 2000))).length,
+    inputTokens: generic.inputTokens,
+    outputTokens: generic.outputTokens,
+    totalTokens: generic.totalTokens || generic.inputTokens + generic.outputTokens + cacheReadTokens + cacheWriteTokens,
+    cacheReadTokens,
+    cacheCreationTokens: generic.cacheCreationTokens,
+    cacheWriteTokens,
+    cachedInputTokens: generic.cachedInputTokens,
+    uncachedInputTokens: Math.max(0, generic.inputTokens - generic.cachedInputTokens),
+    costUsd: generic.costUsd > 0 ? Number(generic.costUsd.toFixed(6)) : null,
+    requestCount: generic.requestCount,
+    errorCount: generic.errorCount,
+    cacheReadRate,
+    cacheReadDenominatorTokens: inputBasis,
+    inputTokensMeaning: generic.inputTokensMeaning,
+    cachedInputMeaning: generic.cachedInputMeaning,
+    telemetryConfidence: visibility === "exact_cache_telemetry" && cacheReadRate !== null ? "high" : visibility === "token_telemetry_only" ? "medium" : "low",
+    confidenceNotes: notes,
+  }
+}
+
 function parserName(provider: LocalAgentProvider, type: CandidateType): string {
   if (provider === "claude-code" && type === "jsonl") return "claude-jsonl"
   if (provider === "codex" && type === "jsonl") return "codex-jsonl"
@@ -330,6 +825,7 @@ function parseCandidate(provider: LocalAgentProvider, type: CandidateType, raw: 
   if (type !== "jsonl" && type !== "json") return failed(parserTried, "unsupported file type")
 
   const parsed = type === "jsonl" ? parseJsonLineObjects(raw) : parseJsonFile(raw)
+  const records = parsed.objects.filter((obj): obj is Record<string, unknown> => Boolean(obj && typeof obj === "object" && !Array.isArray(obj)))
   const textParts: string[] = []
   const models = new Set<string>()
   const eventTypes = new Set<string>()
@@ -338,9 +834,7 @@ function parseCandidate(provider: LocalAgentProvider, type: CandidateType, raw: 
   let subagent: string | undefined
   let toolCalls = 0
 
-  for (const obj of parsed.objects) {
-    if (!obj || typeof obj !== "object") continue
-    const record = obj as Record<string, unknown>
+  for (const record of records) {
     const payload = record.payload && typeof record.payload === "object"
       ? (record.payload as Record<string, unknown>)
       : undefined
@@ -369,8 +863,10 @@ function parseCandidate(provider: LocalAgentProvider, type: CandidateType, raw: 
     }
   }
 
+  const telemetry = aggregateTelemetry(provider, type, records, eventTypes)
+
   const text = redactText(textParts.filter(Boolean).join("\n"), redact)
-  if (!text.trim()) {
+  if (!text.trim() && telemetry.visibility === "unavailable") {
     return {
       status: "failed",
       parserTried,
@@ -394,7 +890,8 @@ function parseCandidate(provider: LocalAgentProvider, type: CandidateType, raw: 
     eventTypes: Array.from(eventTypes).slice(0, 24),
     projectPath,
     subagent,
-    toolCalls,
+    toolCalls: toolCalls + telemetry.toolCalls,
+    telemetry,
   }
 }
 
@@ -535,8 +1032,18 @@ function parseSqliteCandidate(
           outputTokens,
           cacheReadTokens,
           cacheWriteTokens,
+          cachedInputTokens: cacheReadTokens,
+          cacheCreationTokens: cacheWriteTokens,
           costUsd: typeof row.cost === "number" ? row.cost : Number(row.cost ?? 0),
           tokenAccounting: "observed" as const,
+          hasTokenTelemetry: true,
+          hasCacheTelemetry: true,
+          cacheFieldPresent: true,
+          costFieldPresent: row.cost !== undefined && row.cost !== null,
+          cacheReadDenominatorTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
+          source: "local_db" as const,
+          visibility: "exact_cache_telemetry" as const,
+          confidenceNotes: ["OpenCode local database fields: tokens_input, tokens_output, tokens_cache_read, tokens_cache_write."],
         },
       }
     })
@@ -771,6 +1278,39 @@ function loadSessions(options: LocalAuditOptions): {
         sessions.push(...parsed.sessions)
         continue
       }
+      if (parsed.telemetry && parsed.telemetry.visibility !== "unavailable") {
+        const telemetry = parsed.telemetry
+        sessions.push({
+          agent: root.agent,
+          path: file,
+          startedAt: stat.mtime,
+          text: parsed.text || telemetry.confidenceNotes.join("\n"),
+          models: Array.from(new Set([...parsed.models, ...Object.keys(telemetry.modelCounts)])),
+          parseWarnings: parsed.warnings,
+          projectPath: parsed.projectPath,
+          subagent: parsed.subagent,
+          toolCalls: parsed.toolCalls ?? telemetry.toolCalls,
+          metrics: {
+            inputTokens: telemetry.inputTokens,
+            outputTokens: telemetry.outputTokens,
+            cacheReadTokens: telemetry.cacheReadTokens,
+            cacheWriteTokens: telemetry.cacheWriteTokens,
+            cachedInputTokens: telemetry.cachedInputTokens,
+            cacheCreationTokens: telemetry.cacheCreationTokens,
+            costUsd: telemetry.costUsd,
+            tokenAccounting: "observed",
+            hasTokenTelemetry: telemetry.visibility === "exact_cache_telemetry" || telemetry.visibility === "token_telemetry_only",
+            hasCacheTelemetry: telemetry.visibility === "exact_cache_telemetry",
+            cacheFieldPresent: telemetry.visibility === "exact_cache_telemetry",
+            costFieldPresent: telemetry.costUsd !== null,
+            cacheReadDenominatorTokens: telemetry.cacheReadDenominatorTokens ?? null,
+            source: telemetry.source,
+            visibility: telemetry.visibility,
+            confidenceNotes: telemetry.confidenceNotes,
+          },
+        })
+        continue
+      }
       const estimatedInputTokens = approximateTokens(parsed.text)
       sessions.push({
         agent: root.agent,
@@ -787,8 +1327,18 @@ function loadSessions(options: LocalAuditOptions): {
           outputTokens: 0,
           cacheReadTokens: 0,
           cacheWriteTokens: 0,
+          cachedInputTokens: 0,
+          cacheCreationTokens: 0,
           costUsd: null,
           tokenAccounting: "estimated",
+          hasTokenTelemetry: false,
+          hasCacheTelemetry: false,
+          cacheFieldPresent: false,
+          costFieldPresent: false,
+          cacheReadDenominatorTokens: null,
+          source: "transcript",
+          visibility: "transcript_context_only",
+          confidenceNotes: ["Transcript/session text was parsed, but explicit token/cache telemetry fields were not observed."],
         },
       })
     }
@@ -910,6 +1460,11 @@ function missRange(score: number): { lowPercent: number; highPercent: number } {
 }
 
 function cashRange(sessions: LocalSession[], signals: AgentSignals): { low?: number; high?: number; currency: "USD"; label: "estimated" } | undefined {
+  if (sessions.length === 0) return undefined
+  if (sessions.some((session) => session.metrics.tokenAccounting !== "observed")) return undefined
+  if (sessions.some((session) => session.models.some((model) => !pricingForModel(model)?.inputUsdPerMTok))) return undefined
+  const knownCostBasis = sessions.reduce((sum, session) => sum + (session.metrics.costUsd ?? 0), 0)
+  if (knownCostBasis <= 0) return undefined
   let weightedInputCost = 0
   let knownTokens = 0
   for (const session of sessions) {
@@ -922,9 +1477,13 @@ function cashRange(sessions: LocalSession[], signals: AgentSignals): { low?: num
   if (knownTokens === 0) return undefined
   const blendedPerMTok = weightedInputCost / knownTokens
   const avoidableTokens = signals.reusableEstimatedTokens
+  const low = (avoidableTokens * blendedPerMTok * 0.35) / 1_000_000
+  const high = (avoidableTokens * blendedPerMTok * 0.8) / 1_000_000
+  const cappedHigh = Math.min(high, knownCostBasis)
+  const cappedLow = Math.min(low, cappedHigh)
   return {
-    low: Number(((avoidableTokens * blendedPerMTok * 0.35) / 1_000_000).toFixed(2)),
-    high: Number(((avoidableTokens * blendedPerMTok * 0.8) / 1_000_000).toFixed(2)),
+    low: Number(cappedLow.toFixed(2)),
+    high: Number(cappedHigh.toFixed(2)),
     currency: "USD",
     label: "estimated",
   }
@@ -939,17 +1498,23 @@ function sessionStats(sessions: LocalSession[]): {
   cacheReadPercent: number | null
   modelCostUsd: number | null
   tokenAccounting: "observed" | "estimated" | "mixed" | "unavailable"
+  visibility: AgentTelemetryVisibility
 } {
   const inputTokens = sessions.reduce((sum, session) => sum + session.metrics.inputTokens, 0)
   const outputTokens = sessions.reduce((sum, session) => sum + session.metrics.outputTokens, 0)
   const cacheReadTokens = sessions.reduce((sum, session) => sum + session.metrics.cacheReadTokens, 0)
   const cacheWriteTokens = sessions.reduce((sum, session) => sum + session.metrics.cacheWriteTokens, 0)
-  const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
+  const totalTokens = sessions.reduce((sum, session) => {
+    const cacheTokensAreSeparate = session.metrics.cacheReadDenominatorTokens === session.metrics.inputTokens + session.metrics.cacheReadTokens + session.metrics.cacheWriteTokens
+    return sum + session.metrics.inputTokens + session.metrics.outputTokens + session.metrics.cacheWriteTokens + (cacheTokensAreSeparate ? session.metrics.cacheReadTokens : 0)
+  }, 0)
   const observedSessions = sessions.filter((session) => session.metrics.tokenAccounting === "observed")
-  const observedInputTokens = observedSessions.reduce((sum, session) => sum + session.metrics.inputTokens, 0)
   const observedCacheReadTokens = observedSessions.reduce((sum, session) => sum + session.metrics.cacheReadTokens, 0)
-  const observedCacheWriteTokens = observedSessions.reduce((sum, session) => sum + session.metrics.cacheWriteTokens, 0)
-  const cacheDenominator = observedInputTokens + observedCacheReadTokens + observedCacheWriteTokens
+  const denominatorValues = observedSessions
+    .filter((session) => session.metrics.hasCacheTelemetry && session.metrics.cacheReadDenominatorTokens !== null)
+    .map((session) => session.metrics.cacheReadDenominatorTokens as number)
+  const hasExactCacheTelemetry = observedSessions.some((session) => session.metrics.hasCacheTelemetry && session.metrics.cacheReadDenominatorTokens !== null)
+  const cacheDenominator = denominatorValues.reduce((sum, value) => sum + value, 0)
   const observed = sessions.filter((session) => session.metrics.tokenAccounting === "observed").length
   const estimated = sessions.filter((session) => session.metrics.tokenAccounting === "estimated").length
   const costValues = sessions
@@ -961,7 +1526,7 @@ function sessionStats(sessions: LocalSession[]): {
     outputTokens,
     cacheReadTokens,
     cacheWriteTokens,
-    cacheReadPercent: cacheDenominator > 0 ? cacheReadTokens / cacheDenominator : null,
+    cacheReadPercent: hasExactCacheTelemetry && cacheDenominator > 0 ? observedCacheReadTokens / cacheDenominator : null,
     modelCostUsd: costValues.length > 0 ? Number(costValues.reduce((sum, cost) => sum + cost, 0).toFixed(2)) : null,
     tokenAccounting:
       observed > 0 && estimated > 0
@@ -971,6 +1536,13 @@ function sessionStats(sessions: LocalSession[]): {
           : estimated > 0
             ? "estimated"
             : "unavailable",
+    visibility: sessions.some((session) => session.metrics.visibility === "exact_cache_telemetry")
+      ? "exact_cache_telemetry"
+      : sessions.some((session) => session.metrics.visibility === "token_telemetry_only")
+        ? "token_telemetry_only"
+        : sessions.some((session) => session.metrics.visibility === "transcript_context_only")
+          ? "transcript_context_only"
+          : "unavailable",
   }
 }
 
@@ -1015,6 +1587,75 @@ function confidence(sessionsAnalyzed: number, modelCount: number, cashKnown: boo
   if (sessionsAnalyzed >= 20 && modelCount > 0 && cashKnown) return "medium"
   if (sessionsAnalyzed >= 5 && modelCount > 0) return "medium"
   return "low"
+}
+
+function coverageForAgents(agents: LocalAgentReport["agents"], models: LocalAgentModelSummary[]): NonNullable<LocalAgentReport["summary"]["coverage"]> {
+  const analyzed = agents.filter((agent) => agent.sessionsAnalyzed > 0)
+  const coverage = <T,>(items: T[], predicate: (item: T) => boolean): "full" | "partial" | "unavailable" => {
+    if (items.length === 0) return "unavailable"
+    const count = items.filter(predicate).length
+    if (count === 0) return "unavailable"
+    return count === items.length ? "full" : "partial"
+  }
+  return {
+    cacheTokenTelemetry: coverage(analyzed, (agent) => Boolean(agent.cacheFieldPresent)),
+    costTelemetry: coverage(analyzed, (agent) => Boolean(agent.costFieldPresent)),
+    pricingCoverage: models.length === 0 ? "unavailable" : models.every((model) => model.pricingKnown) ? "full" : models.some((model) => model.pricingKnown) ? "partial" : "unavailable",
+    transcriptCoverage: coverage(analyzed, (agent) => agent.visibility === "transcript_context_only" || agent.tokenAccounting === "estimated"),
+  }
+}
+
+function metricValue(
+  value: number | null,
+  unit: Metric<number | null>["unit"],
+  telemetryKind: Metric<number | null>["telemetryKind"],
+  confidenceValue: Metric<number | null>["confidence"],
+  includedInGlobalTotal: boolean,
+  notes?: string[]
+): Metric<number | null> {
+  return {
+    value,
+    unit,
+    telemetryKind,
+    confidence: confidenceValue,
+    includedInGlobalTotal,
+    notes,
+  }
+}
+
+function agentMetricProvenance(agent: LocalAgentProvider, stats: ReturnType<typeof sessionStats>, sessions: LocalSession[]): Record<string, Metric<number | null>> {
+  const sourceType = Array.from(new Set(sessions.map((session) => session.metrics.source))).join(", ") || "unavailable"
+  const tokenKind = stats.tokenAccounting === "estimated" ? "estimated_from_transcript" : stats.tokenAccounting === "unavailable" ? "unavailable" : "observed_token_telemetry"
+  const tokenConfidence = stats.tokenAccounting === "estimated" ? "low" : stats.tokenAccounting === "unavailable" ? "unavailable" : "high"
+  const cacheKind = stats.cacheReadPercent === null ? "unavailable" : "observed_cache_telemetry"
+  const cacheConfidence = stats.cacheReadPercent === null ? "unavailable" : "high"
+  const costKind = stats.modelCostUsd === null ? "unavailable" : "observed_cost_telemetry"
+  const costConfidence = stats.modelCostUsd === null ? "unavailable" : "medium"
+  return {
+    totalTokens: { ...metricValue(stats.totalTokens, "tokens", tokenKind, tokenConfidence, true), sourceAgent: agent, sourceFileOrSourceType: sourceType },
+    inputTokens: { ...metricValue(stats.inputTokens, "tokens", tokenKind, tokenConfidence, true), sourceAgent: agent, sourceFileOrSourceType: sourceType },
+    outputTokens: { ...metricValue(stats.outputTokens, "tokens", tokenKind, tokenConfidence, true), sourceAgent: agent, sourceFileOrSourceType: sourceType },
+    cacheReadTokens: { ...metricValue(stats.cacheReadTokens, "tokens", cacheKind, cacheConfidence, stats.cacheReadPercent !== null), sourceAgent: agent, sourceFileOrSourceType: sourceType, exclusionReason: stats.cacheReadPercent === null ? "Cache field or denominator semantics not available." : undefined },
+    cacheReadPercent: { ...metricValue(stats.cacheReadPercent, "percent", cacheKind, cacheConfidence, false), sourceAgent: agent, sourceFileOrSourceType: sourceType },
+    modelCostUsd: { ...metricValue(stats.modelCostUsd, "usd", costKind, costConfidence, false), sourceAgent: agent, sourceFileOrSourceType: sourceType },
+  }
+}
+
+export function validateLocalAgentReport(report: LocalAgentReport): string[] {
+  const warnings: string[] = []
+  const agentTokenTotal = report.agents.reduce((sum, agent) => sum + agent.totalTokens, 0)
+  if (report.summary.totalTokens !== agentTokenTotal) warnings.push(`Global token total ${report.summary.totalTokens} does not equal agent token total ${agentTokenTotal}.`)
+  if (report.agents.some((agent) => agent.cacheReadPercent === 0 && !agent.cacheFieldPresent)) warnings.push("Missing cache telemetry rendered as 0%.")
+  const staleTelemetryFinding = report.findings.some((finding) => finding.id === "local-cache-telemetry-not-reported") && report.agents.filter((agent) => agent.sessionsAnalyzed > 0).every((agent) => agent.cacheFieldPresent)
+  if (staleTelemetryFinding) warnings.push("Telemetry-not-reported finding is stale: all analyzed agents have cache fields.")
+  const knownCost = report.summary.modelCostUsd ?? 0
+  const recoveryHigh = report.summary.recoverableCashSaving?.high ?? 0
+  if (recoveryHigh > knownCost && knownCost > 0) warnings.push(`Recoverable dollar estimate ${recoveryHigh} exceeds known cost basis ${knownCost}.`)
+  if (report.summary.coverage?.pricingCoverage !== "full" && report.summary.recoverableCashSaving) warnings.push("Dollar recovery is shown with partial or unavailable pricing coverage.")
+  for (const finding of report.findings) {
+    if (!finding.evidence || finding.evidence.trim().length < 8) warnings.push(`Finding ${finding.id} has insufficient evidence.`)
+  }
+  return warnings
 }
 
 function finding(id: string, title: string, evidence: string, recommendation: string, severity: "low" | "medium" | "high", agent?: LocalAgentProvider): LocalAgentFinding {
@@ -1196,6 +1837,15 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
         cacheReadPercent: null,
         modelCostUsd: null,
         tokenAccounting: "unavailable",
+        visibility: "unavailable",
+        coverage: {
+          cacheTokenTelemetry: "unavailable",
+          costTelemetry: "unavailable",
+          pricingCoverage: "unavailable",
+          transcriptCoverage: "unavailable",
+        },
+        metrics: {},
+        sanityWarnings: [],
         toolCalls: 0,
         subagentRuns: 0,
         modelsDetected: 0,
@@ -1216,6 +1866,13 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
         cacheReadPercent: null,
         modelCostUsd: null,
         tokenAccounting: "unavailable",
+        visibility: "unavailable",
+        telemetrySources: [],
+        telemetryConfidence: "low",
+        confidenceNotes: [],
+        cacheFieldPresent: false,
+        costFieldPresent: false,
+        metrics: {},
         toolCalls: 0,
         subagentRuns: 0,
         topSubagents: [],
@@ -1246,13 +1903,21 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
   const allScore = localScore(allStats, allSignals, weakAgents)
   const rankedProjects = summarizeProjectsFromSessions(sessions, projects)
 
+  const claudeProjectsMissingClaudeMd = rankedProjects.filter((p) => !p.hasClaudeMd && sessions.some((s) => s.agent === "claude-code" && s.projectPath === p.path))
+  const claudeSessionsInWeakProjects = sessions.filter((s) => s.agent === "claude-code" && claudeProjectsMissingClaudeMd.some((p) => p.path === s.projectPath))
+
   const globalFindings: LocalAgentFinding[] = []
-  if (allSignals.longWithoutSummary > 0) globalFindings.push(finding("long-sessions-no-summary", "Very long sessions without summaries", `${allSignals.longWithoutSummary} parsed long session(s) did not show clear summary/compaction markers.`, "Summarize old sessions instead of replaying full transcripts.", "medium"))
   if (allSignals.dynamicEarly > 0) globalFindings.push(finding("dynamic-context-early", "Dynamic logs/diffs/tool output appear early", `${allSignals.dynamicEarly} parsed session(s) had volatile command output, timestamps, errors, or diffs near the beginning.`, "Move terminal output, logs, stack traces, and git diffs to the end of task context.", "high"))
   if (weakAgents) globalFindings.push(finding("weak-agents-md", "Missing or weak AGENTS.md", "AGENTS.md was missing, short, or did not contain stable repo instructions.", "Create or update AGENTS.md with stable repo rules and commands.", "medium"))
-  if (weakClaude && sessions.some((session) => session.agent === "claude-code")) globalFindings.push(finding("weak-claude-md", "Missing or weak CLAUDE.md", "Claude Code was detected and parsed, but CLAUDE.md was missing or weak.", "Create or update CLAUDE.md or point it to AGENTS.md.", "low", "claude-code"))
+  if (weakClaude && claudeSessionsInWeakProjects.length > 0 && claudeProjectsMissingClaudeMd.length > 0) {
+    const projectPaths = claudeProjectsMissingClaudeMd.slice(0, 3).map((p) => p.path).join(", ")
+    globalFindings.push(finding("weak-claude-md", "Missing or weak CLAUDE.md", `Claude Code sessions in ${projectPaths} lack CLAUDE.md. ${claudeSessionsInWeakProjects.length} session(s) affected.`, "Create or update CLAUDE.md or point it to AGENTS.md in affected projects.", "low", "claude-code"))
+  }
   if (allSignals.repeatedContext > 0) globalFindings.push(finding("repeated-project-context", "Repeated stable project context across sessions", `${allSignals.repeatedContext} parsed session(s) repeated stable project instructions that could live in markdown files.`, "Move stable project context into AGENTS.md and/or CLAUDE.md.", "medium"))
-  if (sessions.some((session) => session.agent !== "opencode" && session.metrics.tokenAccounting === "estimated")) {
+  if ((["claude-code", "codex"] as LocalAgentProvider[]).some((agent) => {
+    const agentSessions = sessions.filter((session) => session.agent === agent)
+    return agentSessions.length > 0 && !agentSessions.some((session) => session.metrics.cacheFieldPresent)
+  })) {
     globalFindings.push(finding("local-cache-telemetry-not-reported", "Some local agents do not report cache telemetry", "Codex/Claude local transcript files parsed by Cachecatch do not expose cache-read/cache-write token fields, so their cache percentage is shown as not reported instead of guessed.", "This is a local telemetry visibility limitation, not proof that you used the agent incorrectly. Use the context-structure findings below to fix behavior that is actually visible.", "low"))
   }
   if (unknownModelCount > 0) globalFindings.push(finding("unknown-model-pricing", "Unknown model pricing", `${unknownModelCount} detected model name(s) did not match Cachecatch's built-in pricing registry.`, "Keep token/cache percentages, but treat dollar estimates as partial until the pricing map covers those exact model strings.", "low"))
@@ -1267,7 +1932,28 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
     const agentStats = sessionStats(agentSessions)
     const agentWeak = agent === "claude-code" ? weakClaude : weakAgents
     const agentScore = agentSessions.length > 0 ? localScore(agentStats, agentSignals, agentWeak) : 0
-    const agentFindings = agentSessions.length > 0 ? globalFindings.filter((item) => !item.agent || item.agent === agent) : []
+
+    const agentFindingsList: LocalAgentFinding[] = []
+    if (agentSessions.length > 0) {
+      if (agentSignals.dynamicEarly > 0) agentFindingsList.push(finding("dynamic-context-early", "Dynamic logs/diffs/tool output appear early", `${agentSignals.dynamicEarly} parsed session(s) had volatile command output, timestamps, errors, or diffs near the beginning.`, "Move terminal output, logs, stack traces, and git diffs to the end of task context.", "high"))
+      if (agentWeak) {
+        if (agent === "claude-code") {
+          const agentClaudeProjects = claudeProjectsMissingClaudeMd.filter((p) => agentSessions.some((s) => s.projectPath === p.path))
+          if (agentClaudeProjects.length > 0) {
+            const projectPaths = agentClaudeProjects.slice(0, 3).map((p) => p.path).join(", ")
+            agentFindingsList.push(finding("weak-claude-md", "Missing or weak CLAUDE.md", `Claude Code sessions in ${projectPaths} lack CLAUDE.md.`, "Create or update CLAUDE.md or point it to AGENTS.md in affected projects.", "low", "claude-code"))
+          }
+        } else {
+          agentFindingsList.push(finding("weak-agents-md", "Missing or weak AGENTS.md", "AGENTS.md was missing, short, or did not contain stable repo instructions.", "Create or update AGENTS.md with stable repo rules and commands.", "medium"))
+        }
+      }
+      if (agentSignals.repeatedContext > 0) agentFindingsList.push(finding("repeated-project-context", "Repeated stable project context across sessions", `${agentSignals.repeatedContext} parsed session(s) repeated stable project instructions that could live in markdown files.`, "Move stable project context into AGENTS.md and/or CLAUDE.md.", "medium"))
+      if (agent !== "opencode" && !agentSessions.some((session) => session.metrics.cacheFieldPresent)) {
+        agentFindingsList.push(finding("local-cache-telemetry-not-reported", "Some local agents do not report cache telemetry", "Codex/Claude local transcript files parsed by Cachecatch do not expose cache-read/cache-write token fields, so their cache percentage is shown as not reported instead of guessed.", "This is a local telemetry visibility limitation, not proof that you used the agent incorrectly. Use the context-structure findings below to fix behavior that is actually visible.", "low"))
+      }
+      if (agentSignals.unknownPricing > 0) agentFindingsList.push(finding("unknown-model-pricing", "Unknown model pricing", `${agentSignals.unknownPricing} detected model name(s) did not match Cachecatch's built-in pricing registry.`, "Keep token/cache percentages, but treat dollar estimates as partial until the pricing map covers those exact model strings.", "low"))
+    }
+
     return {
       provider: agent,
       detected: detected.has(agent),
@@ -1282,6 +1968,13 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
       cacheReadPercent: agentStats.cacheReadPercent,
       modelCostUsd: agentStats.modelCostUsd,
       tokenAccounting: agentStats.tokenAccounting,
+      visibility: agentStats.visibility,
+      telemetrySources: Array.from(new Set(agentSessions.map((session) => session.metrics.source))),
+      telemetryConfidence: (agentStats.visibility === "exact_cache_telemetry" ? "high" : agentStats.visibility === "token_telemetry_only" ? "medium" : "low") as Confidence,
+      confidenceNotes: Array.from(new Set(agentSessions.flatMap((session) => session.metrics.confidenceNotes))).slice(0, 8),
+      cacheFieldPresent: agentSessions.some((session) => session.metrics.cacheFieldPresent),
+      costFieldPresent: agentSessions.some((session) => session.metrics.costFieldPresent),
+      metrics: agentMetricProvenance(agent, agentStats, agentSessions),
       toolCalls: agentSessions.reduce((sum, session) => sum + session.toolCalls, 0),
       subagentRuns: agentSessions.filter((session) => Boolean(session.subagent)).length,
       topSubagents: Array.from(
@@ -1302,31 +1995,53 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
           ? "Sessions found, but none could be parsed in the requested time window."
           : agentSessions.length === 0
             ? "No local session candidates found."
-            : agentFindings[0]?.title ?? "No major local context-cache breaker detected.",
-      findings: agentFindings,
+            : agentFindingsList[0]?.title ?? "No major local context-cache breaker detected.",
+      findings: agentFindingsList,
       recommendations: agentSessions.length > 0 ? recs : [],
     }
   })
 
-  const observedCacheAgents = Array.from(new Set(sessions.filter((session) => session.metrics.tokenAccounting === "observed").map((session) => session.agent)))
+  const totalToolCalls = activity.toolCalls + sessions.filter((session) => session.agent !== "opencode").reduce((sum, session) => sum + session.toolCalls, 0)
+  const totalSubagentRuns = agents.reduce((sum, agent) => sum + agent.subagentRuns, 0)
+  const summaryCashSaving = (() => {
+    if (unknownModelCount > 0 || allStats.modelCostUsd === null) return null
+    const summed = agents.reduce(
+      (acc, agent) => {
+        const saving = agent.recoverableCashSaving
+        if (!saving) return acc
+        return { low: acc.low + (saving.low ?? 0), high: acc.high + (saving.high ?? 0) }
+      },
+      { low: 0, high: 0 }
+    )
+    if (summed.low === 0 && summed.high === 0) return null
+    const high = Math.min(summed.high, allStats.modelCostUsd)
+    const low = Math.min(summed.low, high)
+    return { low: Number(low.toFixed(2)), high: Number(high.toFixed(2)), currency: "USD" as const, label: "estimated" as const }
+  })()
+  const coverage = coverageForAgents(agents, allModels)
+
+  const observedCacheAgents = Array.from(new Set(sessions.filter((session) => session.metrics.cacheFieldPresent).map((session) => session.agent)))
   const observedCacheLabel = observedCacheAgents.length > 0
     ? observedCacheAgents.map((agent) => agent === "claude-code" ? "Claude Code" : agent === "codex" ? "Codex" : "OpenCode").join(", ")
     : "local agents with visible cache telemetry"
   const cacheSentence = allStats.cacheReadPercent === null
     ? "Cache-read telemetry was not visible in the parsed local files."
     : `Observed ${observedCacheLabel} cache read is ${Math.round(allStats.cacheReadPercent * 100)}%.`
-  const telemetrySentence = sessions.some((session) => session.agent !== "opencode" && session.metrics.tokenAccounting === "estimated")
+  const telemetrySentence = (["claude-code", "codex"] as LocalAgentProvider[]).some((agent) => {
+    const agentSessions = sessions.filter((session) => session.agent === agent)
+    return agentSessions.length > 0 && !agentSessions.some((session) => session.metrics.cacheFieldPresent)
+  })
     ? " Local Claude/Codex cache telemetry is not visible, so those agents are not counted as 0%."
     : ""
 
-  return {
+  const report: LocalAgentReport = {
     reportType: "local-agent-context-audit",
     generatedAt: (options.now ?? new Date()).toISOString(),
     window: options.window,
     summary: {
       status: "Parsed local sessions.",
       cacheLeakScore: allScore,
-      recoverableCashSaving: cash ?? null,
+      recoverableCashSaving: summaryCashSaving,
       estimatedCacheMissRange: missRange(allScore),
       agentsScanned: detected.size,
       sessionsFound: candidatesFound,
@@ -1340,18 +2055,28 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
       cacheReadPercent: allStats.cacheReadPercent,
       modelCostUsd: allStats.modelCostUsd,
       tokenAccounting: allStats.tokenAccounting,
-      toolCalls: activity.toolCalls + sessions.filter((session) => session.agent !== "opencode").reduce((sum, session) => sum + session.toolCalls, 0),
-      subagentRuns: activity.subagentRuns,
+      visibility: allStats.visibility,
+      coverage,
+      metrics: {
+        totalTokens: metricValue(allStats.totalTokens, "tokens", allStats.tokenAccounting === "estimated" ? "estimated_from_transcript" : "observed_token_telemetry", allStats.tokenAccounting === "estimated" ? "low" : "high", true),
+        inputTokens: metricValue(allStats.inputTokens, "tokens", allStats.tokenAccounting === "estimated" ? "estimated_from_transcript" : "observed_token_telemetry", allStats.tokenAccounting === "estimated" ? "low" : "high", true),
+        outputTokens: metricValue(allStats.outputTokens, "tokens", allStats.tokenAccounting === "estimated" ? "estimated_from_transcript" : "observed_token_telemetry", allStats.tokenAccounting === "estimated" ? "low" : "high", true),
+        cacheReadPercent: metricValue(allStats.cacheReadPercent, "percent", allStats.cacheReadPercent === null ? "unavailable" : "observed_cache_telemetry", allStats.cacheReadPercent === null ? "unavailable" : "high", false),
+        modelCostUsd: metricValue(allStats.modelCostUsd, "usd", allStats.modelCostUsd === null ? "unavailable" : "observed_cost_telemetry", allStats.modelCostUsd === null ? "unavailable" : "medium", false),
+        recoverableCashSavingHigh: metricValue(summaryCashSaving?.high ?? null, "usd", summaryCashSaving ? "inferred" : "unavailable", summaryCashSaving ? "medium" : "unavailable", false, summaryCashSaving ? ["Capped to known model-cost basis."] : ["Suppressed because cost/pricing coverage is partial or unavailable."]),
+      },
+      toolCalls: totalToolCalls,
+      subagentRuns: totalSubagentRuns,
       modelsDetected: allModels.filter((m) => m.rawName !== "unknown" && m.rawName !== "<synthetic>").length,
       confidence: confidence(sessions.length, allModels.length, Boolean(cash)),
-      mainFinding: `Cachecatch analyzed ${sessions.length.toLocaleString("en-US")} coding-agent sessions, ${allStats.totalTokens.toLocaleString("en-US")} token activity, ${(activity.toolCalls + sessions.filter((session) => session.agent !== "opencode").reduce((sum, session) => sum + session.toolCalls, 0)).toLocaleString("en-US")} tool calls, and ${activity.subagentRuns.toLocaleString("en-US")} subagent runs. ${cacheSentence}${telemetrySentence}`,
+      mainFinding: `Cachecatch analyzed ${sessions.length.toLocaleString("en-US")} coding-agent sessions, ${allStats.totalTokens.toLocaleString("en-US")} token activity, ${totalToolCalls.toLocaleString("en-US")} tool calls, and ${totalSubagentRuns.toLocaleString("en-US")} subagent runs. ${cacheSentence}${telemetrySentence}`,
     },
     agents,
     modelsDetected: allModels.filter((m) => m.rawName !== "unknown" && m.rawName !== "<synthetic>"),
     projects: rankedProjects,
     activity: {
-      toolCalls: activity.toolCalls + sessions.filter((session) => session.agent !== "opencode").reduce((sum, session) => sum + session.toolCalls, 0),
-      subagentRuns: activity.subagentRuns,
+      toolCalls: totalToolCalls,
+      subagentRuns: totalSubagentRuns,
       topSubagents: activity.topSubagents,
     },
     findings: globalFindings,
@@ -1359,4 +2084,10 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
     diagnostics,
     pricingDisclaimer: PRICING_DISCLAIMER,
   }
+  report.summary.sanityWarnings = validateLocalAgentReport(report)
+  if (report.summary.sanityWarnings.length > 0) {
+    report.summary.confidence = "low"
+    report.summary.recoverableCashSaving = null
+  }
+  return report
 }

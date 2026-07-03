@@ -2,28 +2,9 @@ import type { Metadata } from "next"
 import Image from "next/image"
 import Script from "next/script"
 import "../components/landing/landing.css"
-import { sampleReport } from "@/lib/cachecatch/sample-data"
-import { sampleLocalReport } from "@/lib/cachecatch/sample-local-data"
 import { EmailCapture } from "@/components/landing/email-capture"
 import { TerminalDemo } from "@/components/landing/terminal-demo"
 import { FallingPattern } from "@/components/ui/falling-pattern"
-import { ansiToHtml } from "@/src/reporting/ansi-html"
-import {
-  renderFounderSummary,
-  renderHeader,
-  renderMoneyMath,
-  renderOptimizedPromptStructure,
-  renderPersonalizedFixPlan,
-  renderRouteDiagnostics,
-  renderTopLeaksTable,
-  renderCacheHealthScore,
-  renderAgentRepairPrompt,
-  renderValidationPlan,
-  renderDataQuality,
-  renderExportCommands,
-  setTerminalWidth,
-} from "@/src/reporting/terminal-report"
-import { renderLocalAgentTerminalReport } from "@/src/reporting/local-terminal-report"
 import {
   RiBarChartBoxFill,
   RiMoneyDollarCircleFill,
@@ -31,91 +12,57 @@ import {
   RiTimeFill,
 } from "@/components/icons/remixicon"
 
+import { hero, providers, demo, banner, proof, report, cta, footer, nav } from "@/content/landing/copy"
+import { proofClaims } from "@/content/landing/proof-claims"
+import { agentReportSections, agentReportPrompt } from "@/content/landing/sample-agent-report"
+import { langsmithReportSections, langsmithReportPrompt } from "@/content/landing/sample-langsmith-report"
+
 const siteUrl = "https://cachecatch.spielos.xyz"
-const demoPrompt = "npx cachecatch audit local --window 7d"
-const localPrompt = "npx cachecatch audit local --window 7d"
 
-const demoReportSections = (() => {
-  setTerminalWidth(104)
-  const report = sampleReport
-  const sections = [
-    renderHeader(report),
-    renderFounderSummary(report),
-    renderOptimizedPromptStructure(report),
-    renderMoneyMath(report),
-    renderCacheHealthScore(report),
-    renderTopLeaksTable(report, 4, false),
-    renderRouteDiagnostics(report, false),
-    renderPersonalizedFixPlan(report),
-    renderAgentRepairPrompt(report),
-    renderValidationPlan(report),
-    renderDataQuality(report),
-    renderExportCommands(report),
-  ]
-
-  return sections.map((section) => ansiToHtml(section))
-})()
-
-const localReportSections = (() => {
-  setTerminalWidth(104)
-  const text = renderLocalAgentTerminalReport(sampleLocalReport)
-  return text.split("\n\n").filter((s) => s.trim()).map((section) => ansiToHtml(section))
-})()
-
-const proofItems = [
-  {
-    icon: RiMoneyDollarCircleFill,
-    value: "up to 90%",
-    description: "lower cached input-token cost documented by OpenAI.",
-  },
-  {
-    icon: RiTimeFill,
-    value: "up to 80%",
-    description: "lower latency possible when reusable prefixes hit cache.",
-  },
-  {
-    icon: RiShieldCheckFill,
-    value: "10%",
-    description: "of standard input price for Anthropic cache-read tokens.",
-  },
-  {
-    icon: RiBarChartBoxFill,
-    value: "45-80%",
-    description: "API cost reduction measured in a 2026 agentic prompt-caching evaluation.",
-  },
-]
+const iconMap = {
+  money: RiMoneyDollarCircleFill,
+  time: RiTimeFill,
+  shield: RiShieldCheckFill,
+  chart: RiBarChartBoxFill,
+} as const
 
 export const metadata: Metadata = {
-  title: "CACHECATCH — Prompt CacheOps for AI Teams",
+  title: "CacheCatch — Context Cost Audit and Cache Optimization Platform",
   description:
-    "CACHECATCH audits LLM traces from LangSmith, Langfuse, and Braintrust — plus local IDE agent sessions from Claude Code, Codex, and OpenCode. Detects prompt-cache breakers, estimates wasted spend, and gives exact prompt-layout fixes.",
-  robots: "index, follow, max-image-preview:large",
+    "Audit LLM token costs and prompt-cache efficiency across LangSmith, Langfuse, Braintrust, and local IDE agents. CacheCatch detects cache breakers, estimates wasted spend, and gives exact prompt-layout fixes to cut AI costs up to 90%.",
+  robots: "index, follow, max-image-preview:large, max-snippet:-1",
   metadataBase: new URL(siteUrl),
+  alternates: {
+    canonical: siteUrl,
+  },
   openGraph: {
     type: "website",
-    title: "CACHECATCH — Find the token that kills cache",
-    description: "Prompt-cache reports for AI teams — from cloud traces to local IDE agent sessions.",
+    locale: "en_US",
+    siteName: "CacheCatch",
+    title: "CacheCatch — Context Cost Audit and Cache Optimization Platform",
+    description:
+      "Audit LLM token costs and prompt-cache efficiency across LangSmith, Langfuse, Braintrust, and local IDE agents. Detects cache breakers and gives exact fixes to cut AI costs up to 90%.",
     url: siteUrl,
-    siteName: "CACHECATCH",
-    images: [{ url: "/landing/og.png", width: 1731, height: 909, alt: "CACHECATCH prompt-cache report preview" }],
+    images: [
+      {
+        url: "/landing/og.png",
+        width: 1731,
+        height: 909,
+        alt: "CacheCatch context cost audit and cache optimization report preview",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "CACHECATCH — Find the token that kills cache",
-    description: "Audit AI traces and local IDE agent sessions, detect prompt-cache breakers, and get exact fixes.",
+    title: "CacheCatch — Context Cost Audit and Cache Optimization Platform",
+    description:
+      "Audit LLM token costs and prompt-cache efficiency. Detects cache breakers and gives exact prompt-layout fixes to cut AI costs up to 90%.",
     images: ["/landing/og.png"],
   },
   other: {
-    "application/ld+json": JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      name: "CACHECATCH",
-      applicationCategory: "DeveloperApplication",
-      operatingSystem: "CLI",
-      description:
-        "Prompt-cache diagnosis for AI teams. CACHECATCH audits traces, detects prompt-cache breakers, estimates wasted spend, and produces exact prompt-layout fixes.",
-      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-    }),
+    "application-name": "CacheCatch",
+    "msapplication-TileColor": "#0c0f0d",
+    "theme-color": "#0c0f0d",
   },
 }
 
@@ -138,6 +85,36 @@ function PostHogScript() {
 export default function Landing() {
   return (
     <div className="landing-page">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "CacheCatch",
+            applicationCategory: "DeveloperApplication",
+            operatingSystem: "CLI, Web",
+            description:
+              "Context cost audit and cache optimization platform for AI teams. CacheCatch audits LLM token costs, detects prompt-cache breakers across LangSmith, Langfuse, Braintrust, and local IDE agents, estimates wasted spend, and produces exact prompt-layout fixes to cut AI costs up to 90%.",
+            url: siteUrl,
+            offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+            featureList: [
+              "Token cost audit",
+              "Prompt-cache breaker detection",
+              "AI cost optimization",
+              "Cache efficiency analysis",
+              "Prompt-layout fix plans",
+              "LangSmith trace audit",
+              "Langfuse trace audit",
+              "Braintrust trace audit",
+              "Local IDE agent audit",
+            ],
+            applicationSuite: "CacheCatch",
+            softwareVersion: "0.4.0",
+            screenshot: `${siteUrl}/landing/og.png`,
+          }),
+        }}
+      />
       <PostHogScript />
       <header className="site-header">
         <div className="wrap nav">
@@ -145,58 +122,63 @@ export default function Landing() {
             <span className="brand-word">CACHECATCH</span>
           </a>
           <nav className="nav-links" aria-label="Primary navigation">
-            <a href="#demo">Demo</a>
-            <a href="#proof">Proof</a>
-            <a href="#report">Report</a>
-            <a href="#cta">Get CLI</a>
+            <a href="#demo">{nav.demo}</a>
+            <a href="#proof">{nav.proof}</a>
+            <a href="#report">{nav.report}</a>
+            <a href="#cta">{nav.getCLI}</a>
           </nav>
+          <a href="https://github.com/shayanspiel/cachecatch" target="_blank" rel="noopener noreferrer" className="nav-github">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+            </svg>
+            {nav.githubLabel}
+          </a>
         </div>
       </header>
 
       <main id="top">
+        {/* ─── Hero ──────────────────────────────────────────────── */}
         <section className="l-hero">
           <FallingPattern className="l-hero-pattern" color="#76f79c" duration={80} blurIntensity="0.35rem" density={2.2} />
           <div className="wrap hero-inner">
-            <div className="eyebrow">SAVE UP TO 90% TOKEN COSTS!</div>
+            <div className="eyebrow">{hero.eyebrow}</div>
             <h1>
-              Find the token<br />
-              <span className="l-green">that kills cache.</span>
+              {hero.headline.line1}<br />
+              <span className="l-green">{hero.headline.line2}</span>
             </h1>
-            <p className="subtitle">
-              Whether you trace through LangSmith or run agents directly in your IDE — CACHECATCH turns runs and sessions into a cache-loss report: exact divergence, wasted spend, and the prompt fix your team should ship first.
-            </p>
+            <p className="subtitle">{hero.subtitle}</p>
 
             <div className="provider-row" aria-label="Supported platforms">
               <span className="provider-pill">
                 <Image className="provider-icon provider-icon-langsmith" src="/landing/icons/langsmith.svg" alt="" width={18} height={18} />
-                LangSmith
+                {providers.langsmith}
               </span>
               <span className="provider-pill">
                 <Image className="provider-icon provider-icon-langfuse" src="/landing/icons/langfuse.svg" alt="" width={18} height={18} />
-                Langfuse
+                {providers.langfuse}
               </span>
               <span className="provider-pill">
                 <Image className="provider-icon provider-icon-braintrust" src="/landing/icons/braintrust.svg" alt="" width={18} height={18} />
-                Braintrust
+                {providers.braintrust}
               </span>
               <span className="provider-pill provider-pill-agents" aria-label="Local agents: Claude Code, Codex, OpenCode">
                 <Image className="provider-icon provider-icon-claude" src="/landing/icons/claude.svg" alt="" width={18} height={18} />
                 <Image className="provider-icon provider-icon-codex" src="/landing/icons/codex.svg" alt="" width={18} height={18} />
                 <Image className="provider-icon provider-icon-opencode" src="/landing/icons/opencode.svg" alt="" width={18} height={18} />
-                <span className="provider-pill-agents-label">Local Agents</span>
+                <span className="provider-pill-agents-label">{providers.localAgents}</span>
                 <span className="provider-tooltip">
-                  <span className="provider-tooltip-row">
-                    <Image className="provider-tooltip-icon" src="/landing/icons/claude.svg" alt="" width={14} height={14} />
-                    Claude Code
-                  </span>
-                  <span className="provider-tooltip-row">
-                    <Image className="provider-tooltip-icon" src="/landing/icons/codex.svg" alt="" width={14} height={14} />
-                    Codex
-                  </span>
-                  <span className="provider-tooltip-row">
-                    <Image className="provider-tooltip-icon" src="/landing/icons/opencode.svg" alt="" width={14} height={14} />
-                    OpenCode
-                  </span>
+                  {providers.tooltip.map((t) => (
+                    <span className="provider-tooltip-row" key={t.name}>
+                      <Image
+                        className="provider-tooltip-icon"
+                        src={`/landing/icons/${t.icon}`}
+                        alt=""
+                        width={14}
+                        height={14}
+                      />
+                      {t.name}
+                    </span>
+                  ))}
                 </span>
               </span>
             </div>
@@ -204,60 +186,88 @@ export default function Landing() {
             <EmailCapture id="heroCta" />
 
             <a href="#demo" className="sample-link">
-              View sample report
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              {hero.sampleLink} <span className="tri tri-down">▼</span>
             </a>
           </div>
         </section>
 
+        {/* ─── Demo ──────────────────────────────────────────────── */}
         <section id="demo" aria-labelledby="demo-title">
           <div className="wrap">
             <div className="section-head">
-              <div className="kicker">Real CLI report</div>
+              <div className="kicker">{demo.kicker}</div>
               <h2 id="demo-title">
-                A cache audit<br />
-                <span className="l-green">engineers can act on.</span>
+                {demo.headline.line1}<br />
+                <span className="l-green">{demo.headline.line2}</span>
               </h2>
-              <p className="section-copy">
-                A fast CLI report that summarizes a sample audit — recoverable loss, the top leaking routes, the exact prefix break, and the prompt layout to ship next. Works with cloud traces and local IDE agent sessions alike.
-              </p>
+              <p className="section-copy">{demo.body}</p>
             </div>
 
             <TerminalDemo
               tabs={{
-                agents: { sections: localReportSections, prompt: localPrompt },
-                langsmith: { sections: demoReportSections, prompt: demoPrompt },
+                agents: { sections: agentReportSections, prompt: agentReportPrompt },
+                langsmith: { sections: langsmithReportSections, prompt: langsmithReportPrompt },
               }}
               defaultTab="agents"
             />
           </div>
         </section>
 
+        {/* ─── Banner / X post ───────────────────────────────────── */}
         <section id="banner" aria-labelledby="banner-title">
           <div className="wrap">
             <div className="section-head">
-              <div className="kicker">Community cache reports</div>
+              <div className="kicker">{banner.kicker}</div>
               <h2 id="banner-title">
-                Show the community<br />
-                <span className="l-green">how efficient your agents are.</span>
+                {banner.headline.line1}<br />
+                <span className="l-green">{banner.headline.line2}</span>
               </h2>
-              <p className="section-copy">
-                Generate your own cache report card and share it on X. Let the community see how well your agentic sessions hit cache — or how much you could save with one prompt fix.
-              </p>
+              <p className="section-copy">{banner.body}</p>
             </div>
 
             <div className="banner-preview">
-              <div className="banner-frame">
-                <Image
-                  src="/cachecatch-x-share.png"
-                  alt="Sample CacheCatch X report card showing a cache leak score and recoverable savings"
-                  width={1024}
-                  height={732}
-                  className="banner-image"
-                  priority
-                />
+              <div className="x-post">
+                <div className="x-post-header">
+                  <img
+                    src="/shayan-avatar.jpg"
+                    alt={banner.xPost.name}
+                    className="x-post-avatar"
+                    width={40}
+                    height={40}
+                  />
+                  <div className="x-post-user">
+                    <span className="x-post-name">{banner.xPost.name} <svg className="x-verified" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.67.88-3.33 2.19c-1.4-.46-2.91-.2-3.92.81s-1.26 2.52-.8 3.91c-1.31.67-2.2 1.91-2.2 3.34s.89 2.67 2.2 3.34c-.46 1.39-.21 2.9.8 3.91s2.52 1.26 3.91.81c.67 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34zm-11.71 4.2L6.8 12.46l1.41-1.42 2.26 2.26 4.8-5.23 1.47 1.36-6.2 6.77z" /></svg></span>
+                    <span className="x-post-handle">{banner.xPost.handle}</span>
+                  </div>
+                </div>
+                <div className="x-post-body">
+                  {banner.xPost.body.map((paragraph, i) => (
+                    <p key={i}>{paragraph.split("\n").map((line, j, arr) => (
+                      <span key={j}>
+                        {line}
+                        {j < arr.length - 1 && <br />}
+                      </span>
+                    ))}</p>
+                  ))}
+                </div>
+                <div className="x-post-image">
+                  <Image
+                    src="/cachecatch-x-share.png"
+                    alt={banner.xPost.imageAlt}
+                    width={1024}
+                    height={732}
+                    className="banner-image"
+                    priority
+                  />
+                </div>
+                <div className="x-post-footer">
+                  <span className="x-post-time">{banner.xPost.time}</span>
+                </div>
+              </div>
+              <div className="banner-cta-link">
+                <a href="#cta" className="sample-link">
+                  {banner.ctaLink} <span className="tri tri-down">▼</span>
+                </a>
               </div>
               <div className="banner-cta">
                 <EmailCapture id="bannerCta" />
@@ -266,114 +276,99 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* ─── Proof ─────────────────────────────────────────────── */}
         <section id="proof" aria-labelledby="proof-title">
           <div className="wrap">
             <div className="section-head">
-              <div className="kicker">Why this matters</div>
+              <div className="kicker">{proof.kicker}</div>
               <h2 id="proof-title">
-                Provider caching is real.<br />
-                <span className="l-green">Your prompt order can still break it.</span>
+                {proof.headline.line1}<br />
+                <span className="l-green">{proof.headline.line2}</span>
               </h2>
-              <p className="section-copy">
-                OpenAI and Anthropic reward stable prefixes — whether you call them from cloud traces or local IDE agents. CACHECATCH shows exactly where your prompt stops being cacheable and what that costs.
-              </p>
+              <p className="section-copy">{proof.body}</p>
             </div>
 
             <div className="proof-grid">
-              {proofItems.map((item) => {
-                const Icon = item.icon
+              {proofClaims.map((claim) => {
+                const Icon = iconMap[claim.iconKey]
                 return (
-                  <article className="proof-card" key={item.value}>
+                  <article className="proof-card" key={claim.value}>
                     <div className="icon-box" aria-hidden="true">
                       <Icon className="size-[18px]" />
                     </div>
-                    <b>{item.value}</b>
-                    <span>{item.description}</span>
+                    <b>{claim.value}</b>
+                    <span>{claim.label}</span>
                   </article>
                 )
               })}
             </div>
             <p className="section-copy" style={{ fontSize: 11, marginTop: 18 }}>
-              Sources: OpenAI prompt caching docs, Anthropic pricing docs, and the 2026 agentic prompt-caching evaluation.
+              {proof.sources}
             </p>
           </div>
         </section>
 
+        {/* ─── Report features ───────────────────────────────────── */}
         <section id="report" aria-labelledby="report-title">
           <div className="wrap">
             <div className="section-head">
-              <div className="kicker">What the report gives you</div>
+              <div className="kicker">{report.kicker}</div>
               <h2 id="report-title">
-                The missing layer<br />
-                <span className="l-green">after tracing.</span>
+                {report.headline.line1}<br />
+                <span className="l-green">{report.headline.line2}</span>
               </h2>
-              <p className="section-copy">
-                Tracing tools show runs, latency, token usage, and cost. Local agents generate sessions but leave cache efficiency unseen. CACHECATCH turns both into the cache diagnosis your team can act on immediately.
-              </p>
+              <p className="section-copy">{report.body}</p>
             </div>
 
             <div className="feature-grid">
-              <article className="feature-card">
-                <h3>
-                  <span className="l-num">1</span>
-                  Find the cache breaker
-                </h3>
-                <p>Request IDs, timestamps, user metadata, RAG blocks, tool schemas, and dynamic system prompts that appear before the stable prefix.</p>
-              </article>
-              <article className="feature-card">
-                <h3>
-                  <span className="l-num">2</span>
-                  Rank routes by waste
-                </h3>
-                <p>Group repeated agent routes and show monthly waste, divergence depth, severity, evidence, and confidence per route.</p>
-              </article>
-              <article className="feature-card">
-                <h3>
-                  <span className="l-num">3</span>
-                  Ship the fix plan
-                </h3>
-                <p>Move stable rules, tools, policy, and examples first. Push session metadata, user query, and tool outputs into the dynamic tail.</p>
-              </article>
+              {report.features.map((f) => (
+                <article className="feature-card" key={f.num}>
+                  <h3>
+                    <span className="l-num">{f.num}</span>
+                    {f.title}
+                  </h3>
+                  <p>{f.body}</p>
+                </article>
+              ))}
             </div>
 
             <div className="compare">
               <article className="mini-card">
                 <h3>
                   <span className="l-dash" aria-hidden="true"></span>
-                  Your tracing stack keeps
+                  {report.compare.tracingStack.title}
                 </h3>
                 <ul>
-                  <li><span className="l-check-sm"><svg viewBox="0 0 16 16" fill="none"><path d="m4 8 3 3 5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span>traces, runs, and latency</li>
-                  <li><span className="l-check-sm"><svg viewBox="0 0 16 16" fill="none"><path d="m4 8 3 3 5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span>token usage and model metadata</li>
-                  <li><span className="l-check-sm"><svg viewBox="0 0 16 16" fill="none"><path d="m4 8 3 3 5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span>debugging context and observability</li>
+                  {report.compare.tracingStack.items.map((item) => (
+                    <li key={item}><span className="l-check-sm"><svg viewBox="0 0 16 16" fill="none"><path d="m4 8 3 3 5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span>{item}</li>
+                  ))}
                 </ul>
               </article>
               <article className="mini-card highlight">
                 <h3>
                   <span className="l-plus" aria-hidden="true">+</span>
-                  CACHECATCH adds
+                  {report.compare.cachecatch.title}
                 </h3>
                 <ul>
-                  <li><span className="l-check-sm accent"><svg viewBox="0 0 16 16" fill="none"><path d="m4 8 3 3 5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span>first divergence token</li>
-                  <li><span className="l-check-sm accent"><svg viewBox="0 0 16 16" fill="none"><path d="m4 8 3 3 5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span>cache-specific waste estimate</li>
-                  <li><span className="l-check-sm accent"><svg viewBox="0 0 16 16" fill="none"><path d="m4 8 3 3 5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span>exact prompt-layout fix plan</li>
+                  {report.compare.cachecatch.items.map((item) => (
+                    <li key={item}><span className="l-check-sm accent"><svg viewBox="0 0 16 16" fill="none"><path d="m4 8 3 3 5-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></span>{item}</li>
+                  ))}
                 </ul>
               </article>
             </div>
           </div>
         </section>
 
+        {/* ─── CTA ───────────────────────────────────────────────── */}
         <section id="cta" aria-labelledby="cta-title">
           <div className="wrap">
             <div className="final-panel">
-              <div className="kicker">Run the audit</div>
+              <div className="kicker">{cta.kicker}</div>
               <h2 id="cta-title">
-                Stop paying full price<br />
-                <span className="l-green">for reusable context.</span>
+                {cta.headline.line1}<br />
+                <span className="l-green">{cta.headline.line2}</span>
               </h2>
-              <p className="section-copy">
-                Drop your email, grab the CLI, and run the audit on your local agent sessions or cloud traces in minutes.
-              </p>
+              <p className="section-copy">{cta.body}</p>
               <EmailCapture id="bottomCta" />
             </div>
           </div>
@@ -382,10 +377,11 @@ export default function Landing() {
 
       <footer className="l-footer">
         <div className="wrap l-footer-inner">
-          <span>CACHECATCH — prompt-cache diagnosis for AI teams. No stored prompts. No saved API keys.</span>
+          <span>{footer.tagline}</span>
           <div className="l-footer-links" aria-label="Footer links">
-            <a href="https://x.com/ShayanSpiel" target="_blank" rel="noreferrer noopener">@ShayanSpiel</a>
-            <a href="https://spielos.xyz" target="_blank" rel="noreferrer noopener">spielos.xyz</a>
+            {footer.links.map((link) => (
+              <a key={link.href} href={link.href} target="_blank" rel="noreferrer noopener">{link.label}</a>
+            ))}
           </div>
         </div>
       </footer>

@@ -42,12 +42,6 @@ function fmtUsdRange(range: LocalAgentReport["summary"]["recoverableCashSaving"]
   return `${fmtUsd(range.low)}-${fmtUsd(range.high)}`
 }
 
-function fmtMissRange(report: LocalAgentReport): string {
-  const range = report.summary.estimatedCacheMissRange
-  if (!range) return "unknown"
-  return `${range.lowPercent}-${range.highPercent}%`
-}
-
 function miniBox(title: string, rows: string[], color: "cyan" | "green" | "yellow" | "red" | "gray" = "gray"): string {
   return boxen(rows.join("\n"), {
     title,
@@ -89,9 +83,19 @@ function cacheReadLabel(value: number | null): string {
   return chalk.redBright.bold("LOW")
 }
 
-function tokenNote(kind: string): string {
-  if (kind === "observed") return "observed from local agent telemetry"
-  if (kind === "mixed") return "mixed: OpenCode observed, transcript-only agents estimated"
+function tokenNote(kind: string, provider?: string): string {
+  if (kind === "observed") {
+    if (provider === "claude-code") return "observed from Claude local token events"
+    if (provider === "codex") return "observed from Codex local JSONL token events"
+    if (provider === "opencode") return "observed from OpenCode local database"
+    return "observed from local agent telemetry"
+  }
+  if (kind === "mixed") {
+    if (provider === "claude-code") return "mixed: Claude token events + transcript estimate"
+    if (provider === "codex") return "mixed: Codex token events + transcript estimate"
+    if (provider === "opencode") return "observed from OpenCode local database"
+    return "mixed observed/estimated"
+  }
   if (kind === "estimated") return "estimated from transcript text length"
   return "unavailable"
 }
@@ -138,19 +142,52 @@ function observedCacheAgents(report: LocalAgentReport): string {
 }
 
 function telemetryCoverage(report: LocalAgentReport): string {
-  if (report.summary.sessionsAnalyzed === 0) return "UNAVAILABLE"
-  const analyzed = report.agents.filter((agent) => agent.sessionsAnalyzed > 0)
-  if (analyzed.length === 0) return "UNAVAILABLE"
-  const observed = analyzed.filter((agent) => agent.cacheReadPercent !== null)
-  if (observed.length === 0) return "LIMITED"
-  if (observed.length === analyzed.length) return "FULL"
-  return "PARTIAL"
+  const coverage = report.summary.coverage?.cacheTokenTelemetry
+  if (!coverage || coverage === "unavailable") return "unavailable"
+  if (coverage === "full") return `observed across ${observedCacheAgents(report)}`
+  return `partial; observed on ${observedCacheAgents(report)}`
 }
 
 function agentVisibility(agent: LocalAgentReport["agents"][number]): string {
   if (agent.sessionsAnalyzed === 0) return "not detected"
-  if (agent.cacheReadPercent !== null || agent.tokenAccounting === "observed") return "telemetry-rich"
+  if (agent.visibility === "exact_cache_telemetry") return "telemetry-rich"
+  if (agent.visibility === "token_telemetry_only") return "token telemetry only"
+  if (agent.visibility === "transcript_context_only") return "transcript-rich / cache-telemetry limited"
   return "visibility limited"
+}
+
+function sourceLabel(agent: LocalAgentReport["agents"][number]): string {
+  if (agent.telemetrySources.length === 0) return "not reported"
+  return agent.telemetrySources.map((source) => {
+    if (source === "local_db") return "local database"
+    if (source === "local_jsonl") return "local JSONL token events"
+    if (source === "otel_logs") return "OTel logs"
+    if (source === "otel_metrics") return "OTel metrics"
+    return "transcript"
+  }).join(", ")
+}
+
+function setupHint(agent: LocalAgentReport["agents"][number]): string | null {
+  if (agent.sessionsAnalyzed === 0 || agent.cacheFieldPresent) return null
+  if (agent.provider === "codex") return "Run `npx cachecatch init codex` to enable future Codex OTel telemetry."
+  if (agent.provider === "claude-code") return "Run `npx cachecatch init claude`, then start Claude Code with the generated env file to enable future cache/token telemetry."
+  return null
+}
+
+function tokenFieldsUnclear(agent: LocalAgentReport["agents"][number]): boolean {
+  return agent.cacheFieldPresent === true && agent.cacheReadPercent === null && agent.totalTokens === 0
+}
+
+function cacheTelemetryLabel(agent: LocalAgentReport["agents"][number]): { value: string; note: string } {
+  if (!agent.cacheFieldPresent) return { value: "not reported", note: "no explicit cache fields observed" }
+  if (agent.cacheReadPercent === null) return { value: "fields observed", note: "cache denominator semantics unclear" }
+  return { value: "observed", note: "explicit local token fields present" }
+}
+
+function cacheReadValue(agent: LocalAgentReport["agents"][number]): { value: string; note: string } {
+  if (!agent.cacheFieldPresent) return { value: "not reported", note: "missing cache field" }
+  if (agent.cacheReadPercent === null) return { value: "not reported", note: "semantics unclear" }
+  return { value: fmtPct(agent.cacheReadPercent), note: "observed" }
 }
 
 function agentHygieneValue(agent: LocalAgentReport["agents"][number]): { value: string; note: string } {
@@ -180,23 +217,23 @@ function findingWhy(id: string): string {
   return "This changes how much stable context can be reused across local agent sessions."
 }
 
-function findingPrompt(id: string): string {
-  if (id === "local-cache-telemetry-not-reported") {
-    return "Inspect local session storage and report cache fields only when cache-read/cache-write tokens are explicitly present. Do not infer missing telemetry as zero cache."
-  }
-  if (id === "dynamic-context-early") {
-    return "Rewrite my agent workflow so stable repo instructions load first, then task request, then logs/diffs/tool output at the very end."
-  }
-  if (id === "repeated-project-context") {
-    return "Create or update AGENTS.md with stable repo rules, commands, architecture boundaries, and output conventions. Remove repeated repo boilerplate from task prompts."
-  }
-  if (id === "long-sessions-no-summary") {
-    return "Summarize the previous session into goals, decisions, files touched, blockers, and next commands before continuing. Do not replay the full transcript."
-  }
-  if (id === "unknown-model-pricing") {
-    return "Add or update the built-in pricing map for these detected model names, then rerun the audit. Do not scrape live prices silently during the report."
-  }
-  return "Make stable context explicit, keep it unchanged across sessions, and move volatile task context after it."
+function repairPromptFromFindings(findings: LocalAgentReport["findings"]): string {
+  const strong = findings.filter((f) => f.severity === "high" || f.severity === "medium").slice(0, 2)
+  if (strong.length === 0) return fixPrompt()
+  const lines = [
+    "You are improving local agent prompt-cache hygiene.",
+    "",
+  ]
+  strong.forEach((finding, i) => {
+    const evidence = finding.evidence.replace(/\.\./g, ".").replace(/\s+/g, " ").trim()
+    const recommendation = finding.recommendation.replace(/\.\./g, ".").replace(/\s+/g, " ").trim()
+    lines.push(`${i + 1}. ${finding.title}.`)
+    lines.push(`Evidence: ${evidence}`)
+    lines.push(`Fix: ${recommendation}`)
+    lines.push("")
+  })
+  lines.push("Validate by rerunning CacheCatch for the same window and checking whether the same findings remain.")
+  return lines.join("\n")
 }
 
 function confidenceNote(report: LocalAgentReport): string {
@@ -206,10 +243,11 @@ function confidenceNote(report: LocalAgentReport): string {
   if (report.summary.confidence === "medium") {
     return "Medium confidence: token/cache direction is useful, but some agents or models are estimated or not priced."
   }
-  return "Low confidence: some local agents expose transcripts without cache-token telemetry. Use token totals, session counts, and visible behavior findings as the reliable parts."
+  return "Low confidence: some local fields are missing, estimated, or have unclear semantics. Use only the observed rows and evidence-backed findings as reliable."
 }
 
 function billingConfidence(report: LocalAgentReport): string {
+  if (report.summary.coverage?.costTelemetry !== "full" || report.summary.coverage?.pricingCoverage !== "full") return "PARTIAL"
   if (report.summary.modelCostUsd === null || report.modelsDetected.some((model) => !model.pricingKnown)) return "PARTIAL"
   if (report.summary.tokenAccounting !== "observed") return "PARTIAL"
   return "MEDIUM"
@@ -226,21 +264,20 @@ function efficiencySignal(report: LocalAgentReport): string {
 
 function mainSummary(report: LocalAgentReport): string {
   const agents = report.agents.filter((agent) => agent.sessionsAnalyzed > 0).map((agent) => agentName(agent.provider)).join(", ")
-  const longSessions = report.findings.find((finding) => finding.id === "long-sessions-no-summary")?.evidence
   const dynamicEarly = report.findings.find((finding) => finding.id === "dynamic-context-early")?.evidence
   const cache = report.summary.cacheReadPercent === null
     ? "Cache-read telemetry was not visible in the parsed local files."
     : `The observed ${observedCacheAgents(report)} cache profile is ${fmtPct(report.summary.cacheReadPercent)} (${cacheReadLabel(report.summary.cacheReadPercent).replace(/\u001b\[[0-9;]*m/g, "")}).`
   const limitation = report.agents.some((agent) => agent.sessionsAnalyzed > 0 && agent.cacheReadPercent === null)
-    ? " Local Claude/Codex cache telemetry is not visible, so it is not counted as 0%."
+    ? " Missing cache fields are not counted as 0%."
     : ""
   const issue = dynamicEarly
     ? `The main fixable signal is context hygiene in the transcript-visible sessions: ${dynamicEarly}`
-    : longSessions
-      ? `The main fixable signal is context hygiene in the transcript-visible sessions: ${longSessions}`
-      : "The main fixable signal is keeping stable project instructions first and volatile logs/diffs last where transcript evidence exists."
+    : report.summary.cacheLeakScore !== null && report.summary.cacheLeakScore >= 70
+      ? "Overall context hygiene is healthy; only targeted evidence-backed fixes are shown."
+      : "No high-confidence context-hygiene issue crossed the evidence threshold."
   return [
-    `You are an extreme local agent user: Cachecatch analyzed ${fmtInt(report.summary.sessionsAnalyzed)} coding-agent sessions, ${fmtCompact(report.summary.totalTokens)} token activity, ${fmtInt(report.summary.toolCalls)} tool calls, and ${fmtInt(report.summary.subagentRuns)} subagent runs${agents ? ` across ${agents}` : ""}.`,
+    `Cachecatch analyzed ${fmtInt(report.summary.sessionsAnalyzed)} local agent sessions${agents ? ` across ${agents}` : ""}. Token activity is ${report.summary.tokenAccounting}; cost telemetry is ${report.summary.coverage?.costTelemetry ?? "unavailable"} and pricing coverage is ${report.summary.coverage?.pricingCoverage ?? "unavailable"}.`,
     `${cache}${limitation} ${issue}`,
   ].join(" ")
 }
@@ -260,8 +297,7 @@ function renderSupportShareCard(): string {
 }
 
 function findingRank(id: string): number {
-  if (id === "long-sessions-no-summary") return 1
-  if (id === "dynamic-context-early") return 2
+  if (id === "dynamic-context-early") return 1
   if (id === "weak-agents-md" || id === "weak-claude-md") return 3
   if (id === "repeated-project-context") return 4
   if (id === "local-cache-telemetry-not-reported" || id === "no-cache-telemetry") return 5
@@ -313,7 +349,7 @@ export function renderLocalAgentTerminalReport(
     lines.push("")
     lines.push(miniBox("Builder Scorecard", [
       metric("AGENTIC SESSIONS", fmtInt(report.summary.sessionsAnalyzed), "parsed in this time window", 24),
-      metric("TOKEN ACTIVITY", fmtInt(report.summary.totalTokens), tokenNote(report.summary.tokenAccounting), 24),
+      metric("TOKEN ACTIVITY", fmtInt(report.summary.totalTokens), report.summary.tokenAccounting === "mixed" ? "mixed observed/estimated" : tokenNote(report.summary.tokenAccounting), 24),
       metric("TOOL CALLS", fmtInt(report.summary.toolCalls), "observed where local storage exposes tool records", 24),
       metric("SUBAGENT RUNS", fmtInt(report.summary.subagentRuns), topSubagents(report.activity.topSubagents), 24),
       metric("IDE AGENTS USED", report.agents.filter((agent) => agent.sessionsAnalyzed > 0).map((agent) => agentName(agent.provider)).join(", ") || "none parsed", undefined, 24),
@@ -324,9 +360,13 @@ export function renderLocalAgentTerminalReport(
       `${chalk.gray("CACHE READ PROFILE".padEnd(24))} ${chalk.whiteBright.bold(fmtPct(report.summary.cacheReadPercent))}  ${cacheReadLabel(report.summary.cacheReadPercent)}`,
       metric("CACHE READ TOKENS", fmtInt(report.summary.cacheReadTokens), report.summary.cacheReadPercent === null ? "not reported" : "observed", 24),
       metric("CACHE WRITE TOKENS", fmtInt(report.summary.cacheWriteTokens), report.summary.cacheReadPercent === null ? "not reported" : "observed", 24),
-      metric("TELEMETRY COVERAGE", telemetryCoverage(report), undefined, 24),
+      metric("CACHE-TOKEN TELEMETRY", telemetryCoverage(report), undefined, 24),
+      metric("COST TELEMETRY", report.summary.coverage?.costTelemetry ?? "unavailable", undefined, 24),
+      metric("PRICING COVERAGE", report.summary.coverage?.pricingCoverage ?? "unavailable", undefined, 24),
+      metric("TRANSCRIPT HYGIENE SIGNALS", report.findings.length > 0 ? "available" : report.summary.coverage?.transcriptCoverage === "unavailable" ? "not reported" : report.summary.coverage?.transcriptCoverage ?? "not reported", undefined, 24),
       "",
       detail("Scope", `${cacheScope(report)}.`, "cyan"),
+      detail("Trust", "CacheCatch does not treat missing cache telemetry as zero. Missing fields are reported as not reported.", "yellow"),
       report.agents.some((agent) => agent.sessionsAnalyzed > 0 && agent.cacheReadPercent === null)
         ? detail("Limit", "Claude/Codex local transcripts are not counted as 0%.", "yellow")
         : detail("Basis", "Cache profile uses observed cache-token fields only.", "green"),
@@ -334,14 +374,16 @@ export function renderLocalAgentTerminalReport(
     lines.push("")
     lines.push(miniBox("Context Hygiene", [
       `${chalk.gray("CONTEXT HYGIENE SCORE".padEnd(24))} ${chalk.whiteBright.bold(`${report.summary.cacheLeakScore} / 100`)}  ${healthLabel(report.summary.cacheLeakScore)}  ${scoreBar(report.summary.cacheLeakScore)}`,
-      metric("EFFICIENCY UPSIDE SIGNAL", efficiencySignal(report), "based on visible hygiene findings", 24),
+      metric("EFFICIENCY UPSIDE SIGNAL", efficiencySignal(report), "based on evidence-backed hygiene findings", 24),
       metric("RESEARCH BENCHMARK RANGE", "41-80%", "cost reduction in agentic workloads; not this audit's claim", 24),
-      metric("EST. RAW MODEL COST", `${fmtUsd(report.summary.modelCostUsd)} equivalent`, "raw model pricing; sub/promo is NOT included", 24),
-      metric("RECOVERABLE ESTIMATE", `${fmtUsdRange(report.summary.recoverableCashSaving)} equivalent`, report.summary.recoverableCashSaving ? "local model-cost equivalent" : "partial; pricing unavailable", 24),
+      metric("KNOWN MODEL COST", `${fmtUsd(report.summary.modelCostUsd)} equivalent`, report.summary.modelCostUsd === null ? "not reported" : "observed where local telemetry exposes cost", 24),
+      report.summary.recoverableCashSaving
+        ? metric("RECOVERABLE MODEL-COST GAP", `${fmtUsdRange(report.summary.recoverableCashSaving)} equivalent`, "capped to known eligible cost basis", 24)
+        : metric("RECOVERABLE TOKEN GAP", report.summary.estimatedCacheMissRange ? `${report.summary.estimatedCacheMissRange.lowPercent}-${report.summary.estimatedCacheMissRange.highPercent}% signal` : "unavailable", "dollar estimate unavailable because cost/pricing coverage is partial", 24),
       metric("BILLING CONFIDENCE", billingConfidence(report), "subscriptions/promos/enterprise pricing not visible", 24),
       "",
       detail("Caveat", "Dollar values are model-cost equivalents only.", "yellow"),
-      detail("Basis", "Recoverable estimate = eligible repeated input-token estimate × model input/cache price delta × confidence factor.", "cyan"),
+      detail("Basis", report.summary.recoverableCashSaving ? "Dollar gap requires observed cost, known pricing, and known token semantics." : "Unpriced or partially priced token opportunity is not converted to dollars.", "cyan"),
       report.modelsDetected.some((model) => !model.pricingKnown)
         ? detail("Pricing", "Conservative cache-discount range used where exact cached-input price was unavailable.", "yellow")
         : detail("Pricing", "Built-in model pricing assumptions plus visible reusable-token signals.", "gray"),
@@ -350,7 +392,8 @@ export function renderLocalAgentTerminalReport(
     lines.push(miniBox("Report Confidence", [
       metric("Confidence", report.summary.confidence.toUpperCase(), undefined, 18),
       confidenceNote(report),
-      "Use sessions, token activity, tool calls, model mix, and visible context-hygiene findings as the reliable parts. Dollar values stay caveated.",
+      "Use sessions, observed token/cache rows, model mix, and visible context-hygiene findings as the reliable parts. Unsafe dollar values are suppressed.",
+      ...(report.summary.sanityWarnings?.length ? ["Sanity warnings:", ...report.summary.sanityWarnings.slice(0, 4).map((warning) => `- ${warning}`)] : []),
     ], report.summary.confidence === "high" ? "green" : report.summary.confidence === "medium" ? "yellow" : "red"))
   }
 
@@ -362,18 +405,35 @@ export function renderLocalAgentTerminalReport(
     lines.push("")
     const color = agent.sessionsAnalyzed === 0 ? "yellow" : brandColor(agent.provider)
     const hygiene = agentHygieneValue(agent)
+    const cacheTelemetry = cacheTelemetryLabel(agent)
+    const cacheRead = cacheReadValue(agent)
     lines.push(miniBox(`${agentName(agent.provider)} (${status})`, [
-      metric("Visibility", agentVisibility(agent), agent.cacheReadPercent === null && agent.sessionsAnalyzed > 0 ? "cache telemetry not reported" : undefined, 18),
+      metric("Visibility", agentVisibility(agent), !agent.cacheFieldPresent && agent.sessionsAnalyzed > 0 ? "cache telemetry not reported" : undefined, 18),
       metric("Sessions", `${fmtInt(agent.sessionsAnalyzed)} analyzed`, `${fmtInt(agent.sessionsInWindow)} in time window · ${fmtInt(agent.sessionsFound)} stored`, 18),
-      metric("Tokens", fmtInt(agent.totalTokens), tokenNote(agent.tokenAccounting), 18),
-      metric("Cache telemetry", agent.cacheReadPercent === null ? "not reported" : "observed", agent.cacheReadPercent === null ? "not exposed in local session files" : "local token fields present", 18),
-      metric("Cache read", fmtPct(agent.cacheReadPercent), agent.cacheReadPercent === null ? "not exposed in local session files" : "observed", 18),
+      metric("Tokens", tokenFieldsUnclear(agent) ? "not reported" : fmtInt(agent.totalTokens), tokenFieldsUnclear(agent) ? "token fields present but semantics unclear" : tokenNote(agent.tokenAccounting, agent.provider), 18),
+      metric("Cache telemetry", cacheTelemetry.value, cacheTelemetry.note, 18),
+      metric("Cache read", cacheRead.value, cacheRead.note, 18),
+      metric("Input tokens", tokenFieldsUnclear(agent) ? "not reported" : fmtInt(agent.inputTokens), tokenFieldsUnclear(agent) ? undefined : agent.tokenAccounting === "estimated" ? "estimated" : agent.inputTokens > 0 ? "observed" : "not reported", 18),
+      metric("Cached input", agent.cacheFieldPresent ? fmtInt(agent.cacheReadTokens) : "not reported", agent.cacheFieldPresent && agent.cacheReadPercent === null ? "field present, semantics unclear" : agent.cacheFieldPresent ? "observed" : "missing cache field", 18),
+      metric("Output tokens", tokenFieldsUnclear(agent) ? "not reported" : fmtInt(agent.outputTokens), tokenFieldsUnclear(agent) ? undefined : agent.tokenAccounting === "estimated" ? "estimated" : agent.outputTokens > 0 ? "observed" : "not reported", 18),
+      metric("Cost", fmtUsd(agent.modelCostUsd), agent.modelCostUsd === null ? "not reported" : "observed/estimated from telemetry", 18),
+      metric("Source", sourceLabel(agent), undefined, 18),
       metric("Context hygiene", hygiene.value, hygiene.note, 18),
       metric("Tool calls", fmtInt(agent.toolCalls), undefined, 18),
       metric("Subagents", fmtInt(agent.subagentRuns), topSubagents(agent.topSubagents), 18),
       metric("Top models", topModels(agent.modelsDetected), "ranked by parsed sessions", 18),
       `${chalk.gray("Finding".padEnd(18))} ${chalk.whiteBright(agent.mainFinding)}`,
     ], color as "cyan" | "green" | "yellow" | "red" | "gray"))
+  }
+
+  const setupHints = report.agents.map(setupHint).filter((hint): hint is string => Boolean(hint))
+  if (setupHints.length > 0) {
+    lines.push("")
+    lines.push(chalk.whiteBright.bold("■ TELEMETRY SETUP"))
+    lines.push(miniBox("Enable Future Exact Telemetry", [
+      ...setupHints,
+      "Then run `npx cachecatch daemon` while using the agent.",
+    ], "cyan"))
   }
 
   if (!noParsed && report.projects.length > 0) {
@@ -400,12 +460,26 @@ export function renderLocalAgentTerminalReport(
     for (const finding of usefulFindings.slice(0, noParsed ? 1 : 6)) {
       const color = finding.severity === "high" ? "red" : finding.severity === "medium" ? "yellow" : "cyan"
       lines.push("")
+      const whereParts: string[] = []
+      const affectedMatch = finding.evidence.match(/^(\d+)\s+parsed/)
+      const affectedCount = affectedMatch ? parseInt(affectedMatch[1], 10) : null
+      if (finding.agent) {
+        const agentSessions = report.agents.find((a) => a.provider === finding.agent)
+        whereParts.push(agentName(finding.agent))
+        if (agentSessions) whereParts.push(`${affectedCount !== null ? `${fmtInt(affectedCount)}/` : ""}${fmtInt(agentSessions.sessionsAnalyzed)} sessions`)
+      } else {
+        const activeAgents = report.agents.filter((a) => a.sessionsAnalyzed > 0).map((a) => agentName(a.provider))
+        whereParts.push(activeAgents.join(" + ") || "all agents")
+        whereParts.push(`${affectedCount !== null ? `${fmtInt(affectedCount)}/` : ""}${fmtInt(report.summary.sessionsAnalyzed)} sessions`)
+      }
+      const topProjects = report.projects.slice(0, 2).map((p) => p.path)
+      if (topProjects.length > 0) whereParts.push(`top projects: ${topProjects.join(", ")}`)
       lines.push(miniBox(finding.title, [
         `${chalk.gray("What we found:")} ${finding.evidence}`,
         `${chalk.gray("Why it matters:")} ${findingWhy(finding.id)}`,
-        `${chalk.gray("Where:")} ${finding.agent ? agentName(finding.agent) : `${fmtInt(report.summary.sessionsAnalyzed)} analyzed sessions`}`,
+        `${chalk.gray("Where:")} ${whereParts.join(" · ")}`,
         `${chalk.gray("What to do next:")} ${finding.recommendation}`,
-        `${chalk.gray("Copy-paste agent prompt:")} ${findingPrompt(finding.id)}`,
+        `${chalk.gray("Validation:")} Rerun the same project/window and compare cache-read %, token activity basis, and whether this finding still appears.`,
       ], color as "cyan" | "green" | "yellow" | "red" | "gray"))
     }
   }
@@ -416,30 +490,29 @@ export function renderLocalAgentTerminalReport(
     const visibleFinding = usefulFindings.find((finding) => finding.id !== "local-cache-telemetry-not-reported" && finding.id !== "no-cache-telemetry") ?? usefulFindings[0]
     lines.push(miniBox("1 BEFORE - Local Context Today", [
       `${chalk.redBright("×")} ${visibleFinding?.evidence ?? "Volatile context appears early in parsed sessions."}`,
-      `${chalk.redBright("×")} Long sessions without summaries increase replayed context and reduce reusable-prefix discipline.`,
-      `${chalk.redBright("×")} Missing or changing instruction files make stable project context harder to reuse.`,
+      `${chalk.redBright("×")} ${visibleFinding ? findingWhy(visibleFinding.id) : "Only evidence-backed issues are shown in this section."}`,
     ], "red"))
     lines.push("")
     lines.push(miniBox("2 CACHECATCH FIX", [
       `${chalk.cyanBright("→")} Put stable repo identity, rules, tools, and output conventions in AGENTS.md / CLAUDE.md.`,
       `${chalk.cyanBright("→")} Keep that stable block byte-stable across sessions.`,
-      `${chalk.cyanBright("→")} Move logs, diffs, stack traces, timestamps, current branch state, and tool output to the tail.`,
+      `${chalk.cyanBright("→")} ${visibleFinding?.recommendation ?? "Move volatile task context after stable repo instructions only where the finding evidence applies."}`,
     ], "cyan"))
     lines.push("")
     lines.push(miniBox("3 AFTER - Cache-Ready Local Agent Workflow", [
       `${chalk.greenBright("✔")} Stable prefix first: role, repo rules, architecture constraints, command policy.`,
       `${chalk.greenBright("✔")} Dynamic tail last: task notes, terminal output, diffs, errors, current state.`,
-      `${chalk.greenBright("✔")} Validation: rerun audit and compare observed cache-read %, estimated transcript tokens, and repeated-context findings.`,
+      `${chalk.greenBright("✔")} Validation: rerun audit and compare observed cache-read %, token basis, and whether the same finding remains.`,
     ], "green"))
 
     lines.push("")
     lines.push(chalk.whiteBright.bold("■ PUBLIC SHARE SUMMARY"))
     lines.push(miniBox("Public Share Summary", [
       `${fmtInt(report.summary.sessionsAnalyzed)} agentic sessions in ${report.window}`,
-      `${fmtCompact(report.summary.totalTokens)} token activity`,
+      report.summary.tokenAccounting === "unavailable" ? "Token activity unavailable; public token claim suppressed" : `${fmtCompact(report.summary.totalTokens)} token activity analyzed · ${report.summary.tokenAccounting === "observed" ? "observed" : "mixed observed/estimated"}`,
       `${fmtInt(report.summary.toolCalls)} tool calls`,
       `${fmtInt(report.summary.subagentRuns)} subagent runs`,
-      `${fmtPct(report.summary.cacheReadPercent)} observed cache-read profile`,
+      report.summary.cacheReadPercent === null ? "Cache-read profile not reported" : `${fmtPct(report.summary.cacheReadPercent)} observed cache-read profile`,
       `${fmtInt(report.summary.modelsDetected)} models detected`,
       "",
       "npx cachecatch share ./reports/<report>.json",
@@ -447,7 +520,7 @@ export function renderLocalAgentTerminalReport(
 
     lines.push("")
     lines.push(chalk.whiteBright.bold("■ AGENT REPAIR PROMPT"))
-    for (const promptLine of fixPrompt().split("\n")) {
+    for (const promptLine of repairPromptFromFindings(usefulFindings).split("\n")) {
       lines.push(chalk.gray(`  ${promptLine}`))
     }
   }

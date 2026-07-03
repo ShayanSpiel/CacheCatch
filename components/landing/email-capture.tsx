@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import { emailCapture } from "@/content/landing/copy"
 
 declare global {
   interface Window {
@@ -10,13 +11,6 @@ declare global {
     }
   }
 }
-
-const PLATFORMS = [
-  { id: "langsmith", label: "LangSmith" },
-  { id: "langfuse", label: "Langfuse" },
-  { id: "braintrust", label: "Braintrust" },
-  { id: "local", label: "IDE Agents" },
-] as const
 
 function buildCommand(platform: string) {
   if (platform === "local") {
@@ -33,7 +27,6 @@ const SHARED_DONE_KEY = "cachecatch_captured"
 const STORAGE_KEY_PREFIX = "cachecatch_capture_"
 
 function loadSharedDone(): { done: boolean; email: string; platform: string } {
-  if (typeof window === "undefined") return { done: false, email: "", platform: "local" }
   try {
     const raw = localStorage.getItem(SHARED_DONE_KEY)
     if (!raw) return { done: false, email: "", platform: "local" }
@@ -45,14 +38,12 @@ function loadSharedDone(): { done: boolean; email: string; platform: string } {
 }
 
 function persistSharedDone(done: boolean, email: string, platform: string) {
-  if (typeof window === "undefined") return
   try {
     localStorage.setItem(SHARED_DONE_KEY, JSON.stringify({ done, email, platform }))
   } catch { /* noop */ }
 }
 
 function loadPlatform(id: string): string {
-  if (typeof window === "undefined") return "local"
   try {
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${id}_platform`)
     return raw || "local"
@@ -62,7 +53,6 @@ function loadPlatform(id: string): string {
 }
 
 function persistPlatform(id: string, platform: string) {
-  if (typeof window === "undefined") return
   try {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${id}_platform`, platform)
   } catch { /* noop */ }
@@ -73,20 +63,24 @@ export function EmailCapture({ id }: { id: string }) {
   const [errMsg, setErrMsg] = useState("")
   const [copied, setCopied] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [ctaNote, setCtaNote] = useState<string>(emailCapture.defaultNote)
 
   const [state, setState] = useState<"idle" | "submitting" | "done" | "error">("idle")
   const [platform, setPlatform] = useState("local")
+  const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
     const shared = loadSharedDone()
-    const persistedPlatform = loadPlatform(id)
     if (shared.done) {
       setState("done")
       setPlatform(shared.platform)
     } else {
-      setPlatform(persistedPlatform)
+      setPlatform(loadPlatform(id))
     }
+    setHydrated(true)
+  }, [id])
 
+  useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === SHARED_DONE_KEY) {
         const next = loadSharedDone()
@@ -99,6 +93,13 @@ export function EmailCapture({ id }: { id: string }) {
     window.addEventListener("storage", onStorage)
     return () => window.removeEventListener("storage", onStorage)
   }, [id])
+
+  useEffect(() => {
+    if (state !== "done" || !hydrated) return
+    setCtaNote(emailCapture.submitNote)
+    const timer = setTimeout(() => setCtaNote(emailCapture.defaultNote), 5000)
+    return () => clearTimeout(timer)
+  }, [state, hydrated])
 
   const cliCommand = buildCommand(platform)
 
@@ -168,7 +169,7 @@ export function EmailCapture({ id }: { id: string }) {
 
         const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; backend?: string } | null
         if (!res.ok || !data?.ok) {
-          throw new Error(data?.error || "Hmm, didn't go through. Check your connection and retry.")
+          throw new Error(data?.error || emailCapture.errorMessage)
         }
 
         window.posthog?.identify?.(trimmedEmail, {
@@ -190,7 +191,7 @@ export function EmailCapture({ id }: { id: string }) {
           selected_provider: platform,
         })
         setState("error")
-        setErrMsg("Hmm, didn't go through. Check your connection and retry.")
+        setErrMsg(emailCapture.errorMessage)
       } finally {
         clearTimeout(timeout)
       }
@@ -211,7 +212,7 @@ export function EmailCapture({ id }: { id: string }) {
           </svg>
           <input
             type="email"
-            placeholder="Get the private MVP"
+            placeholder={emailCapture.placeholder}
             autoComplete="email"
             inputMode="email"
             autoCapitalize="off"
@@ -224,10 +225,7 @@ export function EmailCapture({ id }: { id: string }) {
           />
         </label>
         <button className="btn" type="submit" disabled={state === "submitting"}>
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          {state === "submitting" ? "Sending…" : "Get CLI"}
+          {state === "submitting" ? emailCapture.sendingLabel : emailCapture.submitLabel}<span className="btn-arrow">→</span>
         </button>
       </form>
 
@@ -242,21 +240,21 @@ export function EmailCapture({ id }: { id: string }) {
               aria-haspopup="listbox"
               aria-expanded={dropdownOpen}
             >
-              <span className="platform-label">Platform</span>
+              <span className="platform-label">{emailCapture.platformLabel}</span>
               <svg className="platform-chevron" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
             {dropdownOpen && (
               <div className="platform-dropdown-menu" role="listbox">
-                {PLATFORMS.map((p) => (
+                {emailCapture.platforms.map((p) => (
                   <button
                     key={p.id}
                     type="button"
                     className={`platform-dropdown-item${platform === p.id ? " active" : ""}`}
                     role="option"
                     aria-selected={platform === p.id}
-                onMouseDown={(e) => {
+                    onMouseDown={(e) => {
                       e.preventDefault()
                       handlePlatformChange(p.id)
                       setDropdownOpen(false)
@@ -281,7 +279,7 @@ export function EmailCapture({ id }: { id: string }) {
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="m5 12 4 4L19 6" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              Copied
+              {emailCapture.copiedLabel}
             </>
           ) : (
             <>
@@ -289,13 +287,13 @@ export function EmailCapture({ id }: { id: string }) {
                 <path d="M8 8h11v11H8z" stroke="currentColor" strokeWidth="1.6" />
                 <path d="M5 16H4V4h12v1" stroke="currentColor" strokeWidth="1.6" />
               </svg>
-              Copy
+              {emailCapture.copyLabel}
             </>
           )}
         </button>
       </div>
 
-      <div className="l-cta-note">Access unlocked. Copy the local audit command.</div>
+      <div className="l-cta-note">{ctaNote}</div>
       <div className="l-cta-err">{errMsg}</div>
     </div>
   )

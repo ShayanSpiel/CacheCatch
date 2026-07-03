@@ -11,6 +11,65 @@ export type Provider = "langsmith" | "langfuse" | "braintrust" | "mock" | "sampl
 
 export type LocalAgentProvider = "claude-code" | "codex" | "opencode"
 
+export type AgentTelemetryVisibility =
+  | "exact_cache_telemetry"
+  | "token_telemetry_only"
+  | "transcript_context_only"
+  | "unavailable"
+
+export type AgentTelemetrySource =
+  | "local_db"
+  | "local_jsonl"
+  | "otel_logs"
+  | "otel_metrics"
+  | "transcript"
+
+export interface NormalizedAgentTelemetry {
+  agent: LocalAgentProvider
+  source: AgentTelemetrySource
+  visibility: AgentTelemetryVisibility
+  sessions: number
+  runs: number
+  modelCounts: Record<string, number>
+  toolCalls: number
+  subagentRuns: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  cacheWriteTokens: number
+  cachedInputTokens: number
+  uncachedInputTokens: number
+  costUsd: number | null
+  requestCount: number
+  errorCount: number
+  cacheReadRate: number | null
+  cacheReadDenominatorTokens?: number | null
+  inputTokensMeaning?: "uncached_only" | "total_input_including_cached" | "unknown"
+  cachedInputMeaning?: "separate_cache_read" | "subset_of_input" | "unknown"
+  telemetryConfidence: Confidence
+  confidenceNotes: string[]
+}
+
+export interface Metric<T> {
+  value: T
+  unit: "count" | "tokens" | "usd" | "percent" | "sessions" | "models"
+  sourceAgent?: LocalAgentProvider
+  sourceFileOrSourceType?: string
+  telemetryKind:
+    | "observed_cache_telemetry"
+    | "observed_token_telemetry"
+    | "observed_cost_telemetry"
+    | "estimated_from_transcript"
+    | "inferred"
+    | "unavailable"
+  confidence: Confidence | "unavailable"
+  includedInGlobalTotal: boolean
+  exclusionReason?: string
+  notes?: string[]
+}
+
 export type AuditWindow = "24h" | "7d" | "30d" | "1y"
 
 export type Confidence = "low" | "medium" | "high"
@@ -316,6 +375,15 @@ export interface LocalAgentReport {
     cacheReadPercent: number | null
     modelCostUsd: number | null
     tokenAccounting: "observed" | "estimated" | "mixed" | "unavailable"
+    visibility: AgentTelemetryVisibility
+    coverage?: {
+      cacheTokenTelemetry: "full" | "partial" | "unavailable"
+      costTelemetry: "full" | "partial" | "unavailable"
+      pricingCoverage: "full" | "partial" | "unavailable"
+      transcriptCoverage: "full" | "partial" | "unavailable"
+    }
+    metrics?: Record<string, Metric<number | null>>
+    sanityWarnings?: string[]
     toolCalls: number
     subagentRuns: number
     modelsDetected: number
@@ -336,13 +404,20 @@ export interface LocalAgentReport {
     cacheReadPercent: number | null
     modelCostUsd: number | null
     tokenAccounting: "observed" | "estimated" | "mixed" | "unavailable"
+    visibility: AgentTelemetryVisibility
+    telemetrySources: AgentTelemetrySource[]
+    telemetryConfidence: Confidence
+    confidenceNotes: string[]
+    cacheFieldPresent?: boolean
+    costFieldPresent?: boolean
+    metrics?: Record<string, Metric<number | null>>
     toolCalls: number
     subagentRuns: number
     topSubagents: Array<{ name: string; sessions: number }>
     modelsDetected: string[]
     cacheLeakScore: number
     estimatedCacheMissRange?: LocalAgentCacheMissRange
-    recoverableCashSaving?: LocalAgentMoneyRange
+    recoverableCashSaving?: LocalAgentMoneyRange | null
     mainFinding: string
     findings: LocalAgentFinding[]
     recommendations: LocalAgentRecommendation[]

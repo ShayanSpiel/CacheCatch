@@ -34,7 +34,7 @@ export interface IdeAgentXCardData {
 
 const DEFAULT_LOGOS: Record<string, string> = {
   "claude-code":
-    "https://upload.wikimedia.org/wikipedia/commons/b/b0/Claude_AI_symbol.svg",
+    "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%20fill%3D%22%23d97757%22%3E%3Cpath%20d%3D%22m19.6%2066.5%2019.7-11%20.3-1-.3-.5h-1l-3.3-.2-11.2-.3L14%2053l-9.5-.5-2.4-.5L0%2049l.2-1.5%202-1.3%202.9.2%206.3.5%209.5.6%206.9.4L38%2049.1h1.6l.2-.7-.5-.4-.4-.4L29%2041l-10.6-7-5.6-4.1-3-2-1.5-2-.6-4.2%202.7-3%203.7.3.9.2%203.7%202.9%208%206.1L37%2036l1.5%201.2.6-.4.1-.3-.7-1.1L33%2025l-6-10.4-2.7-4.3-.7-2.6c-.3-1-.4-2-.4-3l3-4.2L28%200l4.2.6L33.8%202l2.6%206%204.1%209.3L47%2029.9l2%203.8%201%203.4.3%201h.7v-.5l.5-7.2%201-8.7%201-11.2.3-3.2%201.6-3.8%203-2L61%202.6l2%202.9-.3%201.8-1.1%207.7L59%2027.1l-1.5%208.2h.9l1-1.1%204.1-5.4%206.9-8.6%203-3.5L77%2013l2.3-1.8h4.3l3.1%204.7-1.4%204.9-4.4%205.6-3.7%204.7-5.3%207.1-3.2%205.7.3.4h.7l12-2.6%206.4-1.1%207.6-1.3%203.5%201.6.4%201.6-1.4%203.4-8.2%202-9.6%202-14.3%203.3-.2.1.2.3%206.4.6%202.8.2h6.8l12.6%201%203.3%202%201.9%202.7-.3%202-5.1%202.6-6.8-1.6-16-3.8-5.4-1.3h-.8v.4l4.6%204.5%208.3%207.5L89%2080.1l.5%202.4-1.3%202-1.4-.2-9.2-7-3.6-3-8-6.8h-.5v.7l1.8%202.7%209.8%2014.7.5%204.5-.7%201.4-2.6%201-2.7-.6-5.8-8-6-9-4.7-8.2-.5.4-2.9%2030.2-1.3%201.5-3%201.2-2.5-2-1.4-3%201.4-6.2%201.6-8%201.3-6.4%201.2-7.9.7-2.6v-.2H49L43%2072l-9%2012.3-7.2%207.6-1.7.7-3-1.5.3-2.8L24%2086l10-12.8%206-7.9%204-4.6-.1-.5h-.3L17.2%2077.4l-4.7.6-2-2%20.2-3%201-1%208-5.5Z%22%3E%3C/path%3E%3C/svg%3E",
   codex:
     "data:image/svg+xml,%3Csvg%20version%3D%221.2%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20250%20250%22%20width%3D%22250%22%20height%3D%22250%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22P%22%20gradientUnits%3D%22userSpaceOnUse%22/%3E%3ClinearGradient%20id%3D%22g1%22%20x2%3D%221%22%20href%3D%22%23P%22%20gradientTransform%3D%22matrix%280%2C249.335%2C-249.128%2C0%2C125%2C.332%29%22%3E%3Cstop%20stop-color%3D%22%23b1a7ff%22/%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%237a9dff%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233941ff%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Cstyle%3E.a%7Bfill%3Aurl%28%23g1%29%7D%3C/style%3E%3Cpath%20class%3D%22a%22%20d%3D%22m84.3%205.1q3.7-1.5%207.7-2.6%203.9-1%207.9-1.6%204-0.5%208.1-0.6%204%200%208%200.5%2020.7%202.4%2037.1%2017.7%200.1%200.1%200.4%200.3%200.1%200%200.2%200%200%200%200.2%200%200%200%200.1%200%200%200%200.1%200%205.2-1.4%2010.7-1.9%205.4-0.4%2010.7%200.1%205.5%200.4%2010.7%201.9%205.2%201.3%2010.1%203.6l0.6%200.4%201.6%200.8q5.2%202.5%209.7%206.1%204.7%203.4%208.6%207.7%203.8%204.3%206.9%209.2%203%204.8%205.2%2010.2%204.3%2010.5%204.3%2022.1%200.2%202.1%200%204.2-0.1%202.2-0.2%204.3-0.3%202.1-0.7%204.3-0.4%202.1-0.9%204.1%200%200.2%200%200.4%200%200.2%200%200.5%200%200.1%200.1%200.4%200.1%200.1%200.3%200.3%2012.3%2012.6%2016.3%2030%206%2029.7-12.2%2053.5l-1.9%202.2q-3%203.5-6.5%206.4-3.4%203.1-7.3%205.5-3.8%202.4-8.1%204.2-4.1%201.9-8.5%203.2-0.3%200-0.4%200.2-0.3%200-0.4%200.1-0.1%200.1-0.3%200.4%200%200.1-0.1%200.3c-2.7%207.7-5.3%2014.2-10.2%2020.7-12.5%2016.5-30.8%2025.5-51.5%2025.5q-24.6-0.1-43.6-18.1-0.2-0.1-0.4-0.2-0.2-0.1-0.4-0.1-0.2%200-0.3%200-0.3%200-0.4%200c-5.4%201.7-10.9%201.9-16.7%201.9q-3.5%200-7-0.5-3.4-0.4-6.9-1.2-3.3-0.8-6.6-2-3.3-1.2-6.4-2.8-3.3-1.6-6.4-3.6-3-2-5.8-4.3-3-2.3-5.5-5-2.5-2.6-4.6-5.6c-2.2-2.7-4.3-5.4-5.8-8.5q-0.8-1.6-1.6-3.2-0.6-1.7-1.3-3.3-0.7-1.7-1.2-3.4-0.5-1.6-1-3.4-1.1-4-1.6-7.9-0.6-4-0.6-8%200-4%200.6-8%200.4-4%201.4-8%200%200%200-0.1%200-0.1%200-0.1%200.2-0.2%200.2-0.3%200-0.1-0.2-0.1%200-0.2%200-0.3%200-0.1-0.1-0.1%200-0.2%200-0.2-0.1-0.1-0.1-0.1-2.4-2.5-4.6-5.2-2.1-2.7-4-5.4-1.7-3-3.2-6-1.5-3.1-2.6-6.3-0.8-2-1.3-4.1-0.7-2-1.1-4-0.4-2.1-0.7-4.2-0.2-2.2-0.4-4.3-0.2-2.8-0.1-5.6%200-2.8%200.3-5.4%200.1-2.8%200.6-5.6%200.4-2.8%201.1-5.5%207-23.1%2026.9-36.3%204.3-2.9%208.2-4.5%204.5-1.9%209-3.2%200.2%200%200.3-0.1%200.1-0.2%200.3-0.3%200.1%200%200.1-0.3%200.1-0.1%200.1-0.2%201-3.1%202.2-6%201-2.9%202.5-5.7%201.5-3%203.2-5.6%201.7-2.7%203.7-5.1%202.5-3.2%205.3-5.9%203-2.8%206.1-5.4%203.2-2.4%206.8-4.4%203.5-2%207.2-3.5zm48.3%20146.4c-2.3%200.1-4.4%201-6%202.8-1.5%201.6-2.4%203.7-2.4%205.9%200%202.3%200.9%204.4%202.4%206.2%201.6%201.6%203.7%202.5%206%202.6h50.4c2.4%200.1%204.8-0.6%206.5-2.4%201.7-1.6%202.8-4%202.8-6.4%200-2.4-1.1-4.7-2.8-6.3-1.7-1.8-4.1-2.6-6.5-2.4zm-56.7-64.9c-1.2-1.9-3-3.4-5.3-3.9-2.2-0.5-4.5-0.3-6.5%200.9-2%201.1-3.5%203-4.1%205.2-0.7%202.2-0.4%204.6%200.6%206.5l17.7%2030.9-17.5%2029.5c-1.2%202-1.6%204.5-1.1%206.8%200.7%202.3%202.1%204.1%204.1%205.3%202%201.2%204.4%201.6%206.7%200.9%202.2-0.5%204.2-1.9%205.4-3.9l20.1-34.1q0.7-0.9%200.9-2.1%200.3-1.1%200.3-2.3%200-1.2-0.3-2.2-0.2-1.2-0.8-2.2z%22/%3E%3C/svg%3E",
   opencode:
@@ -86,10 +86,6 @@ function cacheReadLabel(pct: number): string {
   if (pct >= 0.35) return "healthy"
   if (pct >= 0.15) return "leaky"
   return "cold"
-}
-
-function cacheWriteColor(n: number): string {
-  return n === 0 ? "#74f59a" : "#f6e85c"
 }
 
 function rangeLabel(report: LocalAgentReport): string {
@@ -164,6 +160,7 @@ export function localAgentReportToIdeCardData(
   const pm = primaryModelEntry(report)
   const cacheLeakScore = s.cacheLeakScore ?? 0
   const readRate = s.cacheReadPercent ?? 0
+  const readRateLabel = s.cacheReadPercent === null ? "not reported" : `${Math.round(readRate * 100)}%`
   const highPct = r?.highPercent ?? 0
   return {
     handle: options.handle,
@@ -185,9 +182,9 @@ export function localAgentReportToIdeCardData(
       subagentRuns: fmtNum(report.activity?.subagentRuns ?? s.subagentRuns ?? 0),
     },
     cacheProfile: {
-      cacheReadRate: `${Math.round(readRate * 100)}%`,
+      cacheReadRate: readRateLabel,
       cacheReadRateNum: readRate,
-      cacheReadLabel: cacheReadLabel(readRate),
+      cacheReadLabel: s.cacheReadPercent === null ? "missing telemetry" : cacheReadLabel(readRate),
       uncachedRepeatContext: `${highPct}%`,
       uncachedRepeatContextNum: highPct,
       stableContextReuse: `${cacheLeakScore}/100`,
@@ -242,7 +239,7 @@ export function renderIdeAgentXCardHtml(data: IdeAgentXCardData): string {
   const avatarUrl =
     data.avatarUrl || `https://unavatar.io/x/${handleClean}`
   const verifiedBadge = data.verified
-    ? `<span style="display:inline-flex;align-items:center;margin-left:6px"><svg width="20" height="20" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" fill="#1d9bf0"/></svg></span>`
+    ? `<span style="display:inline-flex;align-items:center;margin-left:6px"><svg width="20" height="20" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816z" fill="#1d9bf0"/><path d="M9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" fill="#ffffff"/></svg></span>`
     : ""
   const auditLabel =
     data.auditLabel || `CacheCatch ${data.windowLabel} IDE Agent Report`
@@ -327,6 +324,7 @@ html,body{
 .key{color:#b0b8b2;font-size:8.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
 .val{color:#e8ede9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
 .val-num{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:800;letter-spacing:.01em;line-height:1}
+.val-truncate{display:inline-block;max-width:170px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
 .val-sub{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.01em;color:#8a948d}
 .val-arrow{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:600;color:#8a948d;margin:0 3px}
 .matters{position:absolute;right:56px;top:448px;width:470px;height:200px;z-index:3;border:1px dashed rgba(116,245,154,.35);border-radius:8px;background:var(--panel-bg);padding:12px 18px;overflow:hidden}
@@ -386,7 +384,7 @@ html,body{
 
   <section class="findings">
     <div class="panel-title">AGENT RUN PROFILE</div>
-    <div class="find-row"><div class="key">Primary model</div><div class="val"><span class="val-num" style="color:#fff;max-width:180px;display:inline-block;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom">${esc(data.agentProfile.primaryModel)}</span><span class="val-arrow"> → </span><span class="val-sub">${esc(data.agentProfile.primaryModelSessions)} sessions</span></div></div>
+    <div class="find-row"><div class="key">Primary model</div><div class="val"><span class="val-num val-truncate" style="color:#fff">${esc(data.agentProfile.primaryModel)}</span><span class="val-arrow"> → </span><span class="val-sub">${esc(data.agentProfile.primaryModelSessions)} sessions</span></div></div>
     <div class="find-row"><div class="key">Total tokens</div><div class="val"><span class="val-num" style="color:#fff">${esc(data.agentProfile.totalTokens)}</span><span class="val-arrow"> → </span><span class="val-sub">Across agents</span></div></div>
     <div class="find-row"><div class="key">Tool calls</div><div class="val"><span class="val-num" style="color:#fff">${esc(data.agentProfile.toolCalls)}</span></div></div>
     <div class="find-row"><div class="key">Subagent runs</div><div class="val"><span class="val-num" style="color:#fff">${esc(data.agentProfile.subagentRuns)}</span></div></div>

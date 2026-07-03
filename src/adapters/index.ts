@@ -14,7 +14,7 @@ import type { Provider, ProviderAdapter } from "../types/index.ts"
 export { langSmithAdapter } from "./langsmith.ts"
 export { langfuseAdapter } from "./langfuse.ts"
 export { braintrustAdapter } from "./braintrust.ts"
-export { mockAdapter, buildMockTraces, resetMockTraces } from "./mock.ts"
+export { mockAdapter } from "./mock.ts"
 
 export const ADAPTERS: Record<Provider, ProviderAdapter> = {
   langsmith: langSmithAdapter,

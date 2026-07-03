@@ -228,6 +228,15 @@ function generateMockTraces(): NormalizedTrace[] {
 
 let cachedMock: NormalizedTrace[] | null = null
 
+export function buildMockTraces(): NormalizedTrace[] {
+  if (!cachedMock) cachedMock = generateMockTraces()
+  return cachedMock
+}
+
+export function resetMockTraces(): void {
+  cachedMock = null
+}
+
 export const mockAdapter: ProviderAdapter = {
   id: "mock",
   displayName: "Mock / Sample",
@@ -240,20 +249,11 @@ export const mockAdapter: ProviderAdapter = {
   },
 
   async fetchTraces({ project, limit }) {
-    if (!cachedMock) cachedMock = generateMockTraces()
-    const slices = cachedMock.slice(0, limit ?? cachedMock.length)
+    const traces = buildMockTraces()
+    const slices = traces.slice(0, limit ?? traces.length)
     return {
       traces: slices,
       projectName: project || "Sample Project (Mock)",
     }
   },
-}
-
-export function buildMockTraces(): NormalizedTrace[] {
-  if (!cachedMock) cachedMock = generateMockTraces()
-  return cachedMock
-}
-
-export function resetMockTraces(): void {
-  cachedMock = null
 }

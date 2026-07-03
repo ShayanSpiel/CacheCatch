@@ -24,17 +24,6 @@ import type { NormalizedTrace as _NormalizedTrace } from "../../src/types"
 /** @deprecated use NormalizedTrace from src/types */
 export type NormalizedRun = _NormalizedTrace
 
-/** @deprecated tokens are now fields on NormalizedTrace.metrics */
-export type TokenTelemetry = {
-  inputTokens?: number
-  outputTokens?: number
-  totalTokens?: number
-  cacheReadTokens?: number
-  cacheCreationTokens?: number
-  rawInputTokenDetails?: Record<string, unknown>
-  rawUsage?: Record<string, unknown>
-}
-
 export { CACHE_BREAKER_LABELS, CACHE_BREAKER_SEVERITY } from "../../src/engine/constants"
 export { detectFindings } from "../../src/engine/detectors"
 export { comparePrompts, approximateTokens } from "../../src/engine/prefix-matcher"
@@ -43,6 +32,6 @@ export {
   calculateReportConfidence,
   calculateScore,
 } from "../../src/engine/scoring"
-export { buildReport, annotateWaste } from "../../src/engine/report-builder"
+export { buildReport } from "../../src/engine/report-builder"
 
 export { sampleReport } from "./sample-data"

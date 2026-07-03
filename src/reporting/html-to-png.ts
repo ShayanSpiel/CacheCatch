@@ -41,15 +41,16 @@ export async function htmlToPng(
   if (chromePath) {
     launchOptions.executablePath = chromePath
   }
-  launchOptions.timeout = 60000
+  launchOptions.timeout = 30000
   const browser = await puppeteer.default.launch(launchOptions)
   try {
     const page = await browser.newPage()
-    await page.setDefaultNavigationTimeout(60000)
     await page.setViewport({ width, height })
-    await page.setContent(html, { waitUntil: ["load", "domcontentloaded"] as const })
-    await page.evaluate(() => document.fonts.ready)
-    await new Promise((r) => setTimeout(r, 500))
+    await page.setContent(html, { waitUntil: "load" })
+    await page.evaluate(async () => {
+      try { await document.fonts.ready } catch {}
+      await new Promise((r) => setTimeout(r, 500))
+    })
     const abs = resolve(outputPath)
     await page.screenshot({ path: abs, type: "png" })
     return abs

@@ -12,7 +12,7 @@
 
 import { Command } from "commander"
 import chalk from "chalk"
-import { readFileSync } from "node:fs"
+import { readFileSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { input, confirm } from "@inquirer/prompts"
 import { sampleReport } from "../../../lib/cachecatch/sample-data.ts"
@@ -49,17 +49,32 @@ function isInteractive(): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY)
 }
 
-function buildTweetText(): string {
+function buildTweetText(report?: CachecatchReport): string {
+  if (report) {
+    const sessions = Math.round(report.summary.runsAnalyzed).toLocaleString("en-US")
+    const tokens = report.summary.observedInputTokens >= 1_000_000_000
+      ? `${(report.summary.observedInputTokens / 1_000_000_000).toFixed(2).replace(/\.00$/, "")}B`
+      : report.summary.observedInputTokens.toLocaleString("en-US")
+    const routes = Math.round(report.summary.routesAnalyzed).toLocaleString("en-US")
+    const findings = Math.round(report.findings.length).toLocaleString("en-US")
+    return [
+      "My AI agents apparently had a whole life behind my back.",
+      "",
+      `${sessions} sessions`,
+      `${tokens} token activity`,
+      `${routes} routes analyzed`,
+      `${findings} findings`,
+      "",
+      "Cache profile + cost gap found by CacheCatch.",
+      "",
+      "Try yours:",
+      "cachecatch.spielos.xyz",
+    ].join("\n")
+  }
   return [
-    "Prompt caching is the new prompt engineering.",
+    "My AI agents apparently had a whole life behind my back.",
     "",
-    "Ran a CacheCatch audit on our agent traces.",
-    "",
-    "It catches reusable prompt context missing cache",
-    "because dynamic fields were loaded too early.",
-    "",
-    "Stable context first.",
-    "Request-specific data later.",
+    "Cache profile + cost gap found by CacheCatch.",
     "",
     "Try yours:",
     "cachecatch.spielos.xyz",
@@ -77,21 +92,25 @@ function formatLocalTweetText(report: LocalAgentReport): string {
     : report.summary.totalTokens.toLocaleString("en-US")
   const tools = Math.round(report.summary.toolCalls).toLocaleString("en-US")
   const subagents = Math.round(report.summary.subagentRuns).toLocaleString("en-US")
-  const cacheRead = report.summary.cacheReadPercent === null
-    ? "not reported"
-    : `${Math.round(report.summary.cacheReadPercent * 100)}%`
   return [
-    "Ran Cachecatch on my local AI build workflow.",
+    "My AI agents apparently had a whole life behind my back.",
     "",
-    `${sessions} agentic sessions`,
+    `${sessions} sessions`,
     `${tokens} token activity`,
     `${tools} tool calls`,
     `${subagents} subagent runs`,
-    `${cacheRead} observed cache-read profile`,
     "",
-    "Prompt CacheOps for local agents.",
-    "Try yours: cachecatch.spielos.xyz",
+    "Cache profile + cost gap found by CacheCatch.",
+    "",
+    "Try yours:",
+    "cachecatch.spielos.xyz",
   ].join("\n")
+}
+
+function nextNumberedPath(baseName: string, ext: string): string {
+  let n = 1
+  while (existsSync(`./${baseName}${n}.${ext}`)) n++
+  return `./${baseName}${n}.${ext}`
 }
 
 export function makeShareCommand(): Command {
@@ -101,7 +120,7 @@ export function makeShareCommand(): Command {
     )
     .argument("[input]", "Path to a CachecatchReport JSON file (uses sample data if omitted)")
     .option("--handle <handle>", "X handle (e.g. @ShayanSpiel) — skips interactive prompt")
-    .option("-o, --out <path>", "Output PNG path", "./cachecatch-x-share.png")
+    .option("-o, --out <path>", "Output PNG path (auto-numbered if omitted)")
     .option("--verified", "Show X Verified badge on the card")
     .option("--no-color", "Disable terminal colors")
     .action(async (inputPath: string | undefined, flags: ShareFlags) => {
@@ -188,37 +207,83 @@ export function makeShareCommand(): Command {
           })
         }
 
-        // ---- Fetch avatar URL -------------------------------------------
-        const avatarUrl = `https://unavatar.io/x/${handleClean}`
+        // ---- Fetch avatar with retry + timeout ----------------------------
+        const avatarBaseUrl = `https://unavatar.io/x/${handleClean}`
+        let avatarUrl = avatarBaseUrl
+        const maxRetries = 3
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          process.stderr.write(
+            chalk.cyan(
+              attempt === 1
+                ? `Fetching avatar for @${handleClean}...\n`
+                : `Retrying avatar fetch (attempt ${attempt}/${maxRetries})...\n`
+            )
+          )
+          try {
+            const controller = new AbortController()
+            const timeout = setTimeout(() => controller.abort(), 8000)
+            const resp = await fetch(avatarBaseUrl, {
+              signal: controller.signal,
+              redirect: "follow",
+            })
+            clearTimeout(timeout)
+            if (resp.ok) {
+              const contentType = resp.headers.get("content-type") || ""
+              if (contentType.includes("image/")) {
+                const buf = Buffer.from(await resp.arrayBuffer())
+                const mime = contentType.split(";")[0].trim()
+                avatarUrl = `data:${mime};base64,${buf.toString("base64")}`
+                process.stderr.write(chalk.green(`✔ Avatar fetched successfully\n`))
+                break
+              }
+            }
+            process.stderr.write(
+              chalk.yellow(`⚠ Avatar returned non-image response (attempt ${attempt}/${maxRetries})\n`)
+            )
+          } catch {
+            process.stderr.write(
+              chalk.yellow(`⚠ Avatar fetch timed out (attempt ${attempt}/${maxRetries})\n`)
+            )
+          }
+          if (attempt === maxRetries) {
+            process.stderr.write(
+              chalk.yellow("⚠ Could not fetch avatar, using fallback\n")
+            )
+          }
+        }
 
-        // ---- Generate HTML ----------------------------------------------
-        const html = isLocal
-          ? renderIdeAgentXCardHtml(
-              localAgentReportToIdeCardData(report as LocalAgentReport, {
+        // ---- Generate HTML + PNG -----------------------------------------
+        process.stderr.write(chalk.cyan("Generating banner...\n"))
+        const outPath = flags.out ?? nextNumberedPath("cachecatch-x-share", "png")
+        let savedPath: string
+        try {
+          const html = isLocal
+            ? renderIdeAgentXCardHtml(
+                localAgentReportToIdeCardData(report as LocalAgentReport, {
+                  handle,
+                  avatarUrl,
+                  verified,
+                })
+              )
+            : renderXCardHtml(report as CachecatchReport, {
                 handle,
                 avatarUrl,
                 verified,
               })
-            )
-          : renderXCardHtml(report as CachecatchReport, {
-              handle,
-              avatarUrl,
-              verified,
-            })
-
-        // ---- Convert to PNG ---------------------------------------------
-        const outPath = flags.out ?? "./cachecatch-x-share.png"
-        const savedPath = await htmlToPng(html, outPath)
+          savedPath = await htmlToPng(html, outPath)
+        } catch {
+          fail("Failed to generate banner")
+        }
 
         // ---- Print result -----------------------------------------------
         // ---- Suggested tweet --------------------------------------------
         const tweetText = isLocal
           ? formatLocalTweetText(report as LocalAgentReport)
-          : buildTweetText()
+          : buildTweetText(report as CachecatchReport)
         const tweetUrl = buildTweetUrl(tweetText)
 
-        process.stdout.write(chalk.greenBright(`\n✔ Generated share banner\n`))
-        process.stdout.write(`${chalk.gray("Banner PNG:")} ${chalk.whiteBright(savedPath)}\n`)
+        process.stdout.write(chalk.whiteBright.bold(`\n✔︎ Your banner is generated\n\n`))
+        process.stdout.write(`${chalk.whiteBright.bold("▶ PNG Banner")} [⌘ + Click]: ${chalk.underline.cyan(savedPath)}\n`)
         process.stdout.write(chalk.gray("Use this file as the image attachment on X.\n"))
 
         process.stdout.write(`\n${chalk.whiteBright.bold("Suggested X copy")}\n`)

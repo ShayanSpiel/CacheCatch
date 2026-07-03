@@ -6,8 +6,8 @@ export const sampleLocalReport: LocalAgentReport = {
   window: "7d",
   summary: {
     cacheLeakScore: 52,
-    recoverableCashSaving: { low: 180, high: 420, currency: "USD", label: "estimated" },
-    estimatedCacheMissRange: { lowPercent: 35, highPercent: 55 },
+    recoverableCashSaving: null,
+    estimatedCacheMissRange: { lowPercent: 12, highPercent: 18 },
     agentsScanned: 3,
     sessionsFound: 342,
     sessionsInWindow: 89,
@@ -20,6 +20,7 @@ export const sampleLocalReport: LocalAgentReport = {
     cacheReadPercent: 0.088,
     modelCostUsd: 12.4,
     tokenAccounting: "mixed",
+    visibility: "exact_cache_telemetry",
     toolCalls: 1_247,
     subagentRuns: 38,
     modelsDetected: 4,
@@ -42,6 +43,10 @@ export const sampleLocalReport: LocalAgentReport = {
       cacheReadPercent: 0.117,
       modelCostUsd: 6.8,
       tokenAccounting: "observed",
+      visibility: "exact_cache_telemetry",
+      telemetrySources: ["otel_logs"],
+      telemetryConfidence: "high",
+      confidenceNotes: ["Sample Claude Code OTel fields include input_tokens, output_tokens, cache_read_tokens, and cache_creation_tokens."],
       toolCalls: 624,
       subagentRuns: 18,
       topSubagents: [
@@ -50,8 +55,8 @@ export const sampleLocalReport: LocalAgentReport = {
       ],
       modelsDetected: ["claude-sonnet-4-20250514", "claude-haiku-3.5"],
       cacheLeakScore: 48,
-      estimatedCacheMissRange: { lowPercent: 30, highPercent: 50 },
-      recoverableCashSaving: { low: 120, high: 280, currency: "USD", label: "estimated" },
+      estimatedCacheMissRange: { lowPercent: 14, highPercent: 22 },
+      recoverableCashSaving: null,
       mainFinding:
         "Git diffs and terminal output load before AGENTS.md rules in 71% of sessions, breaking prefix stability.",
       findings: [
@@ -104,6 +109,10 @@ export const sampleLocalReport: LocalAgentReport = {
       cacheReadPercent: 0.063,
       modelCostUsd: 4.1,
       tokenAccounting: "observed",
+      visibility: "exact_cache_telemetry",
+      telemetrySources: ["local_db"],
+      telemetryConfidence: "high",
+      confidenceNotes: ["Sample OpenCode local database fields include tokens_input, tokens_output, tokens_cache_read, and tokens_cache_write."],
       toolCalls: 486,
       subagentRuns: 14,
       topSubagents: [
@@ -112,8 +121,8 @@ export const sampleLocalReport: LocalAgentReport = {
       ],
       modelsDetected: ["gpt-4.1", "gpt-4.1-mini"],
       cacheLeakScore: 58,
-      estimatedCacheMissRange: { lowPercent: 40, highPercent: 60 },
-      recoverableCashSaving: { low: 60, high: 140, currency: "USD", label: "estimated" },
+      estimatedCacheMissRange: { lowPercent: 10, highPercent: 16 },
+      recoverableCashSaving: null,
       mainFinding:
         "Timestamps and session metadata inject before stable project instructions, reducing prefix reuse.",
       findings: [
@@ -166,6 +175,10 @@ export const sampleLocalReport: LocalAgentReport = {
       cacheReadPercent: null,
       modelCostUsd: 1.5,
       tokenAccounting: "estimated",
+      visibility: "transcript_context_only",
+      telemetrySources: ["transcript"],
+      telemetryConfidence: "low",
+      confidenceNotes: ["Sample Codex record is transcript-only; cache telemetry is not reported."],
       toolCalls: 137,
       subagentRuns: 6,
       topSubagents: [{ name: "general", sessions: 4 }],

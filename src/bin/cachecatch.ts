@@ -26,6 +26,10 @@ import { makeExportCommand } from "./commands/export.ts"
 import { makeProjectsCommand } from "./commands/projects.ts"
 import { makeConfigCommand } from "./commands/config.ts"
 import { makeShareCommand } from "./commands/share.ts"
+import { makeDebugCommand } from "./commands/debug.ts"
+import { makeInitCommand } from "./commands/init.ts"
+import { makeDaemonCommand, makeRunCommand, makeTelemetryCommand } from "./commands/daemon.ts"
+import { makeValidateReportCommand } from "./commands/validate-report.ts"
 
 if (process.argv.includes("--no-color") || process.env.NO_COLOR) {
   chalk.level = 0
@@ -48,6 +52,12 @@ program.addCommand(makeExportCommand())
 program.addCommand(makeProjectsCommand())
 program.addCommand(makeConfigCommand())
 program.addCommand(makeShareCommand())
+program.addCommand(makeDebugCommand())
+program.addCommand(makeInitCommand())
+program.addCommand(makeDaemonCommand())
+program.addCommand(makeTelemetryCommand())
+program.addCommand(makeRunCommand())
+program.addCommand(makeValidateReportCommand())
 
 program
   .command("version", { hidden: true })

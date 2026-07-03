@@ -9,7 +9,6 @@ import type {
   CachecatchRouteDiagnostic,
   CacheFinding,
   RouteAudit,
-  Severity,
 } from "../types/index.ts"
 import { APP_NAME, APP_VERSION, PROVIDER_LABELS, WINDOW_LABELS } from "../engine/constants.ts"
 import {
@@ -59,13 +58,6 @@ const C = {
   text: chalk.whiteBright,
   rule: chalk.gray,
   code: chalk.whiteBright,
-}
-
-const SEV_LABEL: Record<Severity, string> = {
-  critical: "× CRITICAL",
-  high: "! HIGH",
-  medium: "! MEDIUM",
-  low: "LOW",
 }
 
 function visibleLength(s: string): number {
@@ -1051,13 +1043,4 @@ export function renderCompactSummary(report: CachecatchReport): string {
   return lines.join("\n")
 }
 
-export function renderFindingsList(report: CachecatchReport): string {
-  const lines: string[] = [section("Findings"), ""]
-  for (const finding of report.findings) {
-    lines.push(
-      `  ${C.warn(SEV_LABEL[finding.severity])}  ${C.value(finding.title)}  ${C.muted(finding.route)}`
-    )
-    lines.push(`      ${C.evidence("#")} ${truncate(finding.evidence, 110)}`)
-  }
-  return lines.join("\n")
-}
+

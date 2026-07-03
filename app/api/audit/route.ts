@@ -68,7 +68,10 @@ export async function POST(request: NextRequest) {
   if (!project) {
     return NextResponse.json(
       { error: "Project name or URL is required." },
-      { status: 400 }
+      {
+        status: 400,
+        headers: { "Cache-Control": "no-store" },
+      }
     )
   }
 

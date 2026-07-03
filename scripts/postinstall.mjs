@@ -39,8 +39,12 @@ if (isRosettaOnAppleSilicon()) {
   }
 
   if (toInstall.length > 0) {
-    execSync(`npm install ${toInstall.join(' ')} --force --no-save`, {
-      stdio: 'inherit', cwd: ROOT, timeout: 60000,
-    });
+    try {
+      execSync(`npm install ${toInstall.join(' ')} --force --no-save`, {
+        stdio: 'inherit', cwd: ROOT, timeout: 60000,
+      });
+    } catch {
+      // Non-fatal: native ARM64 deps are optional performance optimizations.
+    }
   }
 }

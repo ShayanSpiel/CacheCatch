@@ -4,7 +4,6 @@
 
 import { mkdirSync, writeFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, resolve } from "node:path"
-import { Command } from "commander"
 import chalk from "chalk"
 import type { CachecatchReport, LocalAgentReport } from "../types/index.ts"
 import { renderHtmlReport } from "../reporting/html-report.ts"
@@ -17,7 +16,7 @@ import {
 export type ReportOutputFormat = "json" | "html"
 
 export function configureColor(enabled: boolean): void {
-  chalk.level = enabled ? chalk.level : 0
+  chalk.level = enabled && !process.env.NO_COLOR && !process.argv.includes("--no-color") ? 2 : 0
 }
 
 export function coerceWindow(value: string): "24h" | "7d" | "30d" | "1y" {
@@ -164,20 +163,6 @@ export async function streamWordByWord(text: string, delayMs: number): Promise<v
   }
 }
 
-/**
- * Stream text line-by-line (faster than word-by-word, still animated).
- */
-export async function streamLineByLine(text: string, delayMs: number): Promise<void> {
-  const lines = text.split("\n")
-  for (let i = 0; i < lines.length; i++) {
-    process.stdout.write(lines[i])
-    if (i < lines.length - 1) process.stdout.write("\n")
-    if (lines[i].trim().length > 0) {
-      await sleep(delayMs)
-    }
-  }
-}
-
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
 }
@@ -211,11 +196,6 @@ export async function writeTerminalReport(
   }
 }
 
-export function printHeader(): void {
-  // Keep this minimal so it doesn't double up with the per-command header
-  // printed by renderTerminalReport.
-}
-
 export function fail(message: string, err?: unknown): never {
   process.stderr.write("\n")
   process.stderr.write(chalk.bgRed.whiteBright.bold(" ERROR ") + " ")
@@ -232,29 +212,3 @@ export function withErrorHandling<T>(fn: () => Promise<T>): Promise<T> {
   })
 }
 
-export function pickApiKey(provided: string | undefined, envNames: string[]): string {
-  if (provided && provided.length > 0) return provided
-  for (const name of envNames) {
-    const v = process.env[name]
-    if (v && v.length > 0) return v
-  }
-  return ""
-}
-
-/**
- * Wait for an active TTY/keystroke — useful when running interactively.
- * Disabled in CI / non-TTY environments.
- */
-export function maybeWaitForEnter(prompt = "Press Enter to continue…"): Promise<void> {
-  if (!process.stdin.isTTY) return Promise.resolve()
-  return new Promise((resolveFn) => {
-    process.stdout.write("\n" + prompt)
-    process.stdin.setEncoding("utf-8")
-    process.stdin.once("data", () => resolveFn())
-    process.stdin.resume()
-  })
-}
-
-export function getCommandName(cmd: Command): string {
-  return cmd.name()
-}
