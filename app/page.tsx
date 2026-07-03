@@ -263,6 +263,22 @@ export default function Landing() {
                   <span className="x-post-time">{banner.xPost.time}</span>
                 </div>
               </div>
+              <ol className="banner-steps" aria-label="How to share on X">
+                <li>
+                  <span className="banner-steps-num">1</span>
+                  <span>Copy / Run CLI</span>
+                </li>
+                <li className="banner-steps-sep" aria-hidden="true">→</li>
+                <li>
+                  <span className="banner-steps-num">2</span>
+                  <span>After report → <code>npx cachecatch share</code></span>
+                </li>
+                <li className="banner-steps-sep" aria-hidden="true">→</li>
+                <li>
+                  <span className="banner-steps-num">3</span>
+                  <span>Publish on 𝕏</span>
+                </li>
+              </ol>
               <div className="banner-cta-link">
                 <a href="#cta" className="sample-link">
                   {banner.ctaLink} <span className="tri tri-down">▼</span>

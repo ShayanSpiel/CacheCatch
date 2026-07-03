@@ -122,6 +122,29 @@ npm run cachecatch        # Run the CLI via tsx (no build step)
   user explicitly exports HTML/JSON or the CLI auto-saves a local JSON report
   under `reports/` after an audit.
 
+## Uninstall / re-test from 0
+
+To fully wipe Cachecatch and re-test a freshly published version:
+
+```bash
+# 1. Project-local artifacts
+rm -rf ./reports ./.env ./cachecatch-x-share*.png
+
+# 2. HOME artifacts (only present if init/daemon were used)
+rm -rf ~/.cachecatch
+
+# 3. npx's cached copy of the package (forces re-fetch on next npx call)
+npx clear-npx-cache
+# or: rm -rf ~/.npm/_npx
+
+# 4. Re-fetch and verify
+npx --yes cachecatch@latest --version
+```
+
+Step 3 is the one most people miss — without it, `npx cachecatch@latest`
+keeps reusing the previously cached copy and you never actually test the
+newly published version.
+
 ## Publishing (CI)
 
 Two GitHub Actions workflows are checked in under `.github/workflows/`:

@@ -967,6 +967,55 @@ html:has(.landing-page) {
   margin-top: 24px;
   text-align: center;
 }
+.landing-page .banner-steps {
+  list-style: none;
+  margin: 18px auto 0;
+  padding: 0;
+  max-width: 580px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--l-muted);
+  font-size: 12.5px;
+  line-height: 1.2;
+  font-family: var(--l-body);
+}
+.landing-page .banner-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.landing-page .banner-steps-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--l-green);
+  color: var(--l-green);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--l-pixel);
+  flex-shrink: 0;
+}
+.landing-page .banner-steps code {
+  font-family: var(--l-terminal);
+  font-size: 11.5px;
+  color: var(--l-ink);
+  background: rgba(118, 247, 156, 0.08);
+  border: 1px solid var(--l-line);
+  border-radius: var(--l-radius-sm);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.landing-page .banner-steps-sep {
+  color: var(--l-soft);
+  font-size: 12px;
+}
 .landing-page .banner-cta {
   max-width: 580px;
   margin: 28px auto 0;

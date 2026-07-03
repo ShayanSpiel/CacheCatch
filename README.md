@@ -389,7 +389,22 @@ There is no Cachecatch server, no analytics, no phone-home, no cookies, no telem
 To delete everything Cachecatch left on your machine:
 
 ```bash
-rm -rf ./reports ./.env ~/.cachecatch
+rm -rf ./reports ./.env ./cachecatch-x-share*.png ~/.cachecatch
+```
+
+To fully uninstall (including npx's cached copy) and re-test the latest published version from scratch:
+
+```bash
+# Wipe local + HOME files
+rm -rf ./reports ./.env ./cachecatch-x-share*.png ~/.cachecatch
+
+# Wipe npx's cached copy so the next `npx cachecatch@latest` re-fetches
+npx clear-npx-cache
+# (or, if that command isn't on your npm version)
+rm -rf ~/.npm/_npx
+
+# Re-fetch + smoke test
+npx --yes cachecatch@latest --version
 ```
 
 ---
