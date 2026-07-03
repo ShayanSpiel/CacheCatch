@@ -2,6 +2,10 @@
   "name": "cachecatch",
   "version": "0.4.2",
   "description": "Local Prompt CacheOps CLI for auditing AI traces and finding prompt-cache losses.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ShayanSpiel/CacheCatch.git"
+  },
   "license": "MIT",
   "type": "module",
   "bin": {
