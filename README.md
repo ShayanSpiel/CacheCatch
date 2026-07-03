@@ -2,7 +2,7 @@
 
 **The first prompt-cache audit and optimization tool for AI agents.**
 
-Create your agentic [CacheCatch report + flex your 𝕏 banner it right now ↗︎](https://cachecatch.spielos.xyz/)
+Create your agentic CacheCatch report + your 𝕏 banner, [flex it right now ↗︎](https://cachecatch.spielos.xyz/)
 [![Sample Agentic CacheCatch Report banner](public/cachecatch-x-share.png)](https://cachecatch.spielos.xyz/#heroCta)
 
 
