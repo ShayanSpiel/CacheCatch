@@ -35,20 +35,24 @@ export async function htmlToPng(
   const height = options.height ?? 732
 
   const chromePath = getChromeExecutablePath()
-
-  type PuppeteerModule = typeof import("puppeteer")
-  const puppeteerModule = (await import("puppeteer").catch(() => {
+  if (!chromePath) {
     throw new Error(
-      "puppeteer is not installed. Install it with: npm install -g puppeteer\n" +
-      "Or run without X card generation: cachecatch sample --no-x-card"
+      "Could not find a Chrome / Chromium binary to render the X card.\n" +
+      "Install one of:\n" +
+      "  - Google Chrome:  https://www.google.com/chrome/\n" +
+      "  - Chromium:       brew install --cask chromium\n" +
+      "Then re-run `cachecatch share`."
+    )
+  }
+
+  type PuppeteerModule = typeof import("puppeteer-core")
+  const puppeteerModule = (await import("puppeteer-core").catch(() => {
+    throw new Error(
+      "puppeteer-core is not installed. Run `npm install` in the Cachecatch package directory."
     )
   })) as unknown as { default: PuppeteerModule }
   const puppeteer: PuppeteerModule = puppeteerModule.default
-  const launchOptions: LaunchOptions = { headless: true }
-  if (chromePath) {
-    launchOptions.executablePath = chromePath
-  }
-  launchOptions.timeout = 30000
+  const launchOptions: LaunchOptions = { headless: true, executablePath: chromePath, timeout: 30000 }
   const browser = await puppeteer.launch(launchOptions)
   try {
     const page = await browser.newPage()
