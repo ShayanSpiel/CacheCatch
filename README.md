@@ -4,7 +4,7 @@
 
 1. Run audit → 2. Run share → 3. Post on 𝕏
 
-`npx cachecatch@latest audit local --window 7d` → `npx --yes cachecatch@latest share --handle @yourname`
+`npx cachecatch@latest audit local --window 7d` → `npx --yes cachecatch@latest share`
 
 [![Sample Agentic CacheCatch Report banner](public/cachecatch-x-share.png)](https://cachecatch.spielos.xyz/#heroCta)
 
@@ -23,14 +23,14 @@ npx cachecatch@latest audit local --window 7d
 Then generate your 𝕏 banner and share it:
 
 ```bash
-npx --yes cachecatch@latest share --handle @yourname
+npx --yes cachecatch@latest share
 ```
 
 `share` fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. It automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit local`, then `share`. To share a specific report instead, pass its path:
 
 ```bash
-npx cachecatch@latest share audit.json --handle @yourname -o ./my-card.png
-npx cachecatch@latest share local-report.json --handle @yourname -o ./my-local-card.png
+npx cachecatch@latest share audit.json -o ./my-card.png
+npx cachecatch@latest share local-report.json -o ./my-local-card.png
 ```
 
 ### What it shows
@@ -211,7 +211,7 @@ npx cachecatch@latest sample --out ./cachecatch-report.html
 | `cachecatch config set-key langfuse publicKey:secretKey` | Save Langfuse keys |
 | `cachecatch config get` | Show redacted local config |
 | `cachecatch export audit.json --format html --out ./report.html` | Convert saved report JSON to HTML |
-| `cachecatch share --handle @yourname` | Generate a shareable X card PNG |
+| `cachecatch share` | Generate a shareable X card PNG |
 | `cachecatch --help` | Show CLI help |
 
 All report commands support `--no-color` for plain terminal output.
