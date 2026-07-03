@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="CC logo">
   <title>CC micro-style logo</title>
-  <g fill="#FFFFFF" shape-rendering="crispEdges">
+  <g fill="#FFFFFF" shape-rendering="crispEdges" transform="translate(128,128) scale(0.78) translate(-128,-128)">
     <!-- Left C -->
     <rect x="22" y="9" width="94" height="46"/>
     <rect x="22" y="9" width="46" height="238"/>

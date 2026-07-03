@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Image from "next/image"
 import Script from "next/script"
-import "../components/landing/landing.css"
 import { EmailCapture } from "@/components/landing/email-capture"
 import { TerminalDemo } from "@/components/landing/terminal-demo"
 import { FallingPattern } from "@/components/ui/falling-pattern"
@@ -27,7 +26,7 @@ const iconMap = {
 } as const
 
 export const metadata: Metadata = {
-  title: "CacheCatch — Context Cost Audit and Cache Optimization Platform",
+  title: "CacheCatch — Prompt Cache Audit & Cost Optimization",
   description:
     "Audit LLM token costs and prompt-cache efficiency across LangSmith, Langfuse, Braintrust, and local IDE agents. CacheCatch detects cache breakers, estimates wasted spend, and gives exact prompt-layout fixes to cut AI costs up to 90%.",
   robots: "index, follow, max-image-preview:large, max-snippet:-1",
@@ -39,25 +38,25 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     siteName: "CacheCatch",
-    title: "CacheCatch — Context Cost Audit and Cache Optimization Platform",
+    title: "CacheCatch — Prompt Cache Audit & Cost Optimization",
     description:
       "Audit LLM token costs and prompt-cache efficiency across LangSmith, Langfuse, Braintrust, and local IDE agents. Detects cache breakers and gives exact fixes to cut AI costs up to 90%.",
     url: siteUrl,
     images: [
       {
-        url: "/landing/og.png",
-        width: 1731,
-        height: 909,
-        alt: "CacheCatch context cost audit and cache optimization report preview",
+        url: "/landing/og.jpg",
+        width: 1200,
+        height: 630,
+        alt: "CacheCatch prompt cache audit and cost optimization report preview",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "CacheCatch — Context Cost Audit and Cache Optimization Platform",
+    title: "CacheCatch — Prompt Cache Audit & Cost Optimization",
     description:
       "Audit LLM token costs and prompt-cache efficiency. Detects cache breakers and gives exact prompt-layout fixes to cut AI costs up to 90%.",
-    images: ["/landing/og.png"],
+    images: ["/landing/og.jpg"],
   },
   other: {
     "application-name": "CacheCatch",
@@ -111,7 +110,7 @@ export default function Landing() {
             ],
             applicationSuite: "CacheCatch",
             softwareVersion: "0.4.0",
-            screenshot: `${siteUrl}/landing/og.png`,
+            screenshot: `${siteUrl}/landing/og.jpg`,
           }),
         }}
       />

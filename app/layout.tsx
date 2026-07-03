@@ -3,6 +3,7 @@ import { JetBrains_Mono, Micro_5 } from "next/font/google"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { NotificationProvider } from "@/components/shared/notification-toast"
 import "./globals.css"
+import "../components/landing/landing.css"
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -18,7 +19,7 @@ const micro5 = Micro_5({
 })
 
 export const metadata: Metadata = {
-  title: "CacheCatch — Context Cost Audit and Cache Optimization Platform",
+  title: "CacheCatch — Prompt Cache Audit & Cost Optimization",
   description:
     "CacheCatch audits LLM token costs and prompt-cache efficiency across LangSmith, Langfuse, Braintrust, and local IDE agents (Claude Code, Codex, OpenCode). Detects cache breakers, estimates wasted spend, and gives exact prompt-layout fixes to cut AI costs up to 90%.",
   applicationName: "CacheCatch",
@@ -47,7 +48,11 @@ export const metadata: Metadata = {
   authors: [{ name: "CacheCatch" }],
   creator: "CacheCatch",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
     apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },
 }
