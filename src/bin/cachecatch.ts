@@ -35,6 +35,11 @@ if (process.argv.includes("--no-color") || process.env.NO_COLOR) {
   chalk.level = 0
 }
 
+// Strip leading "--" so npx invocations like "npx cachecatch -- audit local" work
+if (process.argv[2] === "--") {
+  process.argv.splice(2, 1)
+}
+
 const program = new Command()
 
 program
@@ -94,8 +99,10 @@ program
   }
 
 program.parseAsync(process.argv).catch((err) => {
-  process.stderr.write("\n" + chalk.bgRed.whiteBright.bold(" FATAL ") + " ")
-  process.stderr.write(chalk.redBright(err instanceof Error ? err.message : String(err)) + "\n")
+  const msg = "\n" + chalk.bgRed.whiteBright.bold(" FATAL ") + " " +
+    chalk.redBright(err instanceof Error ? err.message : String(err)) + "\n"
+  process.stderr.write(msg)
+  process.stdout.write(msg)
   if (err instanceof Error && err.stack && process.env.DEBUG) {
     process.stderr.write(chalk.gray(err.stack) + "\n")
   }

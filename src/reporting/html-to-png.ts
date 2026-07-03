@@ -36,7 +36,15 @@ export async function htmlToPng(
 
   const chromePath = getChromeExecutablePath()
 
-  const puppeteer = await import("puppeteer")
+  let puppeteer: any
+  try {
+    puppeteer = await import("puppeteer")
+  } catch {
+    throw new Error(
+      "puppeteer is not installed. Install it with: npm install -g puppeteer\n" +
+      "Or run without X card generation: cachecatch sample --no-x-card"
+    )
+  }
   const launchOptions: LaunchOptions = { headless: true }
   if (chromePath) {
     launchOptions.executablePath = chromePath
