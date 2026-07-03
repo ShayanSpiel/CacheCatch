@@ -54,7 +54,7 @@ export const banner = {
     line2: "how efficient your agents are.",
   },
   body: "Generate your own cache report card and share it on X. Let the community see how well your agentic sessions hit cache — or how much you could save with one prompt fix.",
-  ctaLink: "Generate your X report card now",
+  ctaLink: "Generate your 𝕏 report card now",
   xPost: {
     name: "Shayan",
     handle: "@ShayanSpiel",

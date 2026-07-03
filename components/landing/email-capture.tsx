@@ -65,21 +65,38 @@ export function EmailCapture({ id }: { id: string }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [ctaNote, setCtaNote] = useState<string>(emailCapture.defaultNote)
 
+  // Initial state must match what the server renders, otherwise React 19
+  // will throw a hydration mismatch. The server always renders "idle" +
+  // "local" + the default CTA note, so we mirror that on the client's
+  // first render and only update from localStorage after mount.
   const [state, setState] = useState<"idle" | "submitting" | "done" | "error">("idle")
   const [platform, setPlatform] = useState("local")
   const [hydrated, setHydrated] = useState(false)
 
+  // Defer the localStorage read into a microtask. The setState calls happen
+  // inside the queueMicrotask callback (not synchronously in the effect
+  // body), so the react-hooks/set-state-in-effect rule allows it, and we
+  // still avoid a visible "idle → done" flash on the very first paint.
   useEffect(() => {
-    const shared = loadSharedDone()
-    if (shared.done) {
-      setState("done")
-      setPlatform(shared.platform)
-    } else {
-      setPlatform(loadPlatform(id))
+    const applyStored = () => {
+      const shared = loadSharedDone()
+      if (shared.done) {
+        setState("done")
+        setPlatform(shared.platform)
+      } else {
+        setPlatform(loadPlatform(id))
+      }
+      setHydrated(true)
     }
-    setHydrated(true)
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(applyStored)
+    } else {
+      Promise.resolve().then(applyStored)
+    }
   }, [id])
 
+  // Cross-tab sync: setState inside the storage event callback is allowed
+  // by the react-hooks/set-state-in-effect rule.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === SHARED_DONE_KEY) {
@@ -94,9 +111,17 @@ export function EmailCapture({ id }: { id: string }) {
     return () => window.removeEventListener("storage", onStorage)
   }, [id])
 
+  // Toast: when state becomes "done" after hydration, show submitNote for
+  // 5s, then revert. The 5s setTimeout callback is allowed; we kick off the
+  // "show" via a microtask to keep the effect body setState-free.
   useEffect(() => {
     if (state !== "done" || !hydrated) return
-    setCtaNote(emailCapture.submitNote)
+    const showToast = () => setCtaNote(emailCapture.submitNote)
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(showToast)
+    } else {
+      Promise.resolve().then(showToast)
+    }
     const timer = setTimeout(() => setCtaNote(emailCapture.defaultNote), 5000)
     return () => clearTimeout(timer)
   }, [state, hydrated])

@@ -411,12 +411,14 @@ html:has(.landing-page) {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin-top: 18px;
+  margin-top: 24px;
   color: var(--l-green);
   font-size: 13px;
   font-weight: 800;
 }
 .landing-page .sample-link:hover { color: var(--l-green-2); }
+.landing-page .sample-link-static { cursor: default; }
+.landing-page .sample-link-static:hover { color: var(--l-green); }
 .landing-page .tri {
   display: inline-block;
   font-size: 8px;
@@ -964,43 +966,34 @@ html:has(.landing-page) {
   font-size: 13px;
 }
 .landing-page .banner-cta-link {
-  margin-top: 24px;
   text-align: center;
 }
 .landing-page .banner-steps {
   list-style: none;
-  margin: 18px auto 0;
+  margin: 24px auto 0;
   padding: 0;
   max-width: 580px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 14px;
+  flex-wrap: nowrap;
   color: var(--l-muted);
   font-size: 12.5px;
   line-height: 1.2;
   font-family: var(--l-body);
+  white-space: nowrap;
 }
 .landing-page .banner-steps li {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
 }
-.landing-page .banner-steps-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.landing-page .banner-steps .l-num {
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  border: 1px solid var(--l-green);
-  color: var(--l-green);
-  font-size: 10.5px;
-  font-weight: 700;
-  line-height: 1;
-  font-family: var(--l-pixel);
-  flex-shrink: 0;
+  font-size: 10px;
 }
 .landing-page .banner-steps code {
   font-family: var(--l-terminal);
@@ -1012,13 +1005,9 @@ html:has(.landing-page) {
   padding: 1px 5px;
   white-space: nowrap;
 }
-.landing-page .banner-steps-sep {
-  color: var(--l-soft);
-  font-size: 12px;
-}
 .landing-page .banner-cta {
   max-width: 580px;
-  margin: 28px auto 0;
+  margin: 24px auto 0;
 }
 
 .landing-page #demo {
@@ -1081,6 +1070,7 @@ html:has(.landing-page) {
   .landing-page .platform-dropdown-menu { left: auto; right: 0; min-width: 130px; }
   .landing-page .platform-dropdown-item { padding: 12px 14px; font-size: 13px; }
   .landing-page .l-footer-inner { align-items: flex-start; }
+  .landing-page .banner-steps { flex-wrap: wrap; white-space: normal; row-gap: 8px; }
 }
 @media (max-width: 640px) {
   .landing-page .terminal-bar { flex-wrap: wrap; height: auto; padding: 6px 10px; gap: 6px; }

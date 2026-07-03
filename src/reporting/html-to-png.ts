@@ -36,21 +36,20 @@ export async function htmlToPng(
 
   const chromePath = getChromeExecutablePath()
 
-  let puppeteer: any
-  try {
-    puppeteer = await import("puppeteer")
-  } catch {
+  type PuppeteerModule = typeof import("puppeteer")
+  const puppeteerModule = (await import("puppeteer").catch(() => {
     throw new Error(
       "puppeteer is not installed. Install it with: npm install -g puppeteer\n" +
       "Or run without X card generation: cachecatch sample --no-x-card"
     )
-  }
+  })) as unknown as { default: PuppeteerModule }
+  const puppeteer: PuppeteerModule = puppeteerModule.default
   const launchOptions: LaunchOptions = { headless: true }
   if (chromePath) {
     launchOptions.executablePath = chromePath
   }
   launchOptions.timeout = 30000
-  const browser = await puppeteer.default.launch(launchOptions)
+  const browser = await puppeteer.launch(launchOptions)
   try {
     const page = await browser.newPage()
     await page.setViewport({ width, height })
