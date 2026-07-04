@@ -935,6 +935,10 @@ html:has(.landing-page) {
   box-shadow: 0 38px 98px rgba(0,0,0,.48);
   overflow: hidden;
   transition: border-color .18s ease, box-shadow .18s ease;
+  display: block;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
 }
 .landing-page .x-post:hover {
   border-color: rgba(118,247,156,.34);

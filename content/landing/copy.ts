@@ -59,14 +59,14 @@ export const banner = {
     name: "Shayan",
     handle: "@ShayanSpiel",
     body: [
-      "My AI agents apparently had a whole life behind my back.",
-      "1,296 sessions\n4.69B token activity\n90,794 tool calls\n48 subagent runs",
-      "Cache profile + cost gap found by CacheCatch.",
-      "Try yours:\ncachecatch.spielos.xyz",
+      "My AI agents apparently had a WHOLE LIFE behind my back.",
+      "1,351 sessions\n8.4B token activity\n147,505 tool calls\n1,046 subagent runs",
+      "And I had no clean way to see where the token waste was hiding.",
+      "So I built CacheCatch⌄\n\nGet your report + flex 𝕏 banner:\ncachecatch.spielos.xyz",
     ],
     imageAlt:
-      "CacheCatch local agent report showing 1,296 sessions with 4.69B tokens and 90,794 tool calls",
-    time: "12:00 PM · Jul 1, 2026",
+      "CacheCatch local agent report showing 1,351 sessions with 8.4B tokens and 147,505 tool calls",
+    time: "12:00 PM · Jul 4, 2026",
   },
 } as const
 

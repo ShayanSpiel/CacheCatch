@@ -207,7 +207,7 @@ export default function Landing() {
             </div>
 
             <div className="banner-preview">
-              <div className="x-post">
+              <a href="https://x.com/ShayanSpiel/status/2073294968240705793?s=20" target="_blank" rel="noopener noreferrer" className="x-post">
                 <div className="x-post-header">
                   <Image
                     src="/shayan-avatar.jpg"
@@ -244,7 +244,7 @@ export default function Landing() {
                 <div className="x-post-footer">
                   <span className="x-post-time">{banner.xPost.time}</span>
                 </div>
-              </div>
+              </a>
               <ol className="banner-steps" aria-label="How to share on X">
                 <li>
                   <span className="l-num">1</span>
