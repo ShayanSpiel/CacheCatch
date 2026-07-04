@@ -1,9 +1,13 @@
 import type { Metadata } from "next"
+import Script from "next/script"
 import { JetBrains_Mono, Micro_5 } from "next/font/google"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { NotificationProvider } from "@/components/shared/notification-toast"
+import { PostHogProvider } from "@/components/analytics/posthog-provider"
 import "./globals.css"
 import "../components/landing/landing.css"
+
+const GA_ID = "G-P43CBK4EEX"
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -68,10 +72,21 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${jetbrainsMono.variable} ${micro5.variable} font-sans antialiased`}
     >
+      <head>
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="ga-init" strategy="afterInteractive">
+          {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}',{send_page_view:true});`}
+        </Script>
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <NotificationProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </NotificationProvider>
+        <PostHogProvider>
+          <NotificationProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </NotificationProvider>
+        </PostHogProvider>
       </body>
     </html>
   )

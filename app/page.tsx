@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import Image from "next/image"
-import Script from "next/script"
 import { EmailCapture } from "@/components/landing/email-capture"
 import { TerminalDemo } from "@/components/landing/terminal-demo"
 import { FallingPattern } from "@/components/ui/falling-pattern"
@@ -65,22 +64,6 @@ export const metadata: Metadata = {
   },
 }
 
-function PostHogScript() {
-  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com"
-
-  if (!key) return null
-
-  return (
-    <Script id="posthog-init" strategy="afterInteractive">
-      {`
-        !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags reloadFeatureFlags getFeatureFlag getFeatureFlagPayload group".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-        posthog.init(${JSON.stringify(key)}, { api_host: ${JSON.stringify(host)}, person_profiles: "identified_only", capture_pageview: true });
-      `}
-    </Script>
-  )
-}
-
 export default function Landing() {
   return (
     <div className="landing-page">
@@ -109,12 +92,11 @@ export default function Landing() {
               "Local IDE agent audit",
             ],
             applicationSuite: "CacheCatch",
-            softwareVersion: "0.4.14",
+            softwareVersion: "0.4.13",
             screenshot: `${siteUrl}/landing/og.jpg`,
           }),
         }}
       />
-      <PostHogScript />
       <header className="site-header">
         <div className="wrap nav">
           <a href="#top" className="brand" aria-label="CACHECATCH home">
