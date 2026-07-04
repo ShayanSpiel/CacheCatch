@@ -42,9 +42,7 @@ export function PostHogPageView() {
 
   useEffect(() => {
     if (!window.posthog?.capture) return
-    let url = pathname
-    const params = searchParams.toString()
-    if (params) url += `?${params}`
+    const url = window.location.href
     window.posthog.capture("$pageview", { $current_url: url })
   }, [pathname, searchParams])
 
