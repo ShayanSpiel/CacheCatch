@@ -266,7 +266,7 @@ html:has(.landing-page) {
   border-radius: 2px;
 }
 
-.landing-page .l-cta { max-width: 720px; margin: 30px auto 0; scroll-margin-top: 70px; }
+.landing-page .l-cta, .landing-page .l-cli { max-width: 720px; margin: 30px auto 0; scroll-margin-top: 70px; }
 .landing-page .email-row, .landing-page .command-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
 .landing-page .input-box, .landing-page .command-box {
   height: 50px;
@@ -363,6 +363,7 @@ html:has(.landing-page) {
 .landing-page .platform-dropdown-trigger:hover { color: var(--l-green); }
 .landing-page .platform-dropdown-trigger:focus-visible { outline: 1px solid var(--l-green); outline-offset: -1px; }
 .landing-page .platform-chevron { width: 12px; height: 12px; transition: transform .16s ease; flex: 0 0 auto; }
+.landing-page .platform-dropdown-trigger[aria-expanded="true"] .platform-chevron { transform: rotate(180deg); }
 .landing-page .platform-dropdown-menu {
   position: absolute;
   top: 100%;
@@ -423,12 +424,9 @@ html:has(.landing-page) {
 .landing-page .sample-link-static:hover { color: var(--l-green); }
 .landing-page .tri {
   display: inline-block;
-  font-size: 8px;
-  line-height: 1;
-  vertical-align: middle;
   transition: transform .15s ease;
 }
-.landing-page .tri-down { transform: translateY(1px); }
+.landing-page .tri-down { width: 10px; height: 10px; transform: translateY(1px); }
 .landing-page .sample-link:hover .tri-down,
 .landing-page .banner-cta-link:hover .tri-down { transform: translateY(4px); }
 .landing-page .tri-right { transform: translateX(0); }
@@ -783,7 +781,7 @@ html:has(.landing-page) {
   background: rgba(118,247,156,.07);
   color: var(--l-green);
 }
-.landing-page .icon-box svg { width: 18px; height: 18px; fill: currentColor; }
+.landing-page .icon-box img { width: 18px; height: 18px; }
 .landing-page .proof-card b { display: block; font-size: 20px; letter-spacing: 0; }
 .landing-page .proof-card span { display: block; margin-top: 8px; color: var(--l-muted); font-size: 12px; line-height: 1.55; }
 .landing-page .feature-card {
@@ -1048,6 +1046,28 @@ html:has(.landing-page) {
 .landing-page .banner-cta {
   max-width: 580px;
   margin: 24px auto 0;
+}
+
+.landing-page .l-cli .command-row {
+  display: grid;
+  opacity: 1;
+  transform: none;
+}
+
+.landing-page .inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--l-green);
+}
+
+.landing-page .inline-link:hover {
+  color: var(--l-green-2);
+}
+
+.landing-page .inline-icon {
+  width: 12px;
+  height: 12px;
 }
 
 .landing-page #demo {

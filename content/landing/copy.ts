@@ -137,7 +137,7 @@ export const cta = {
     line1: "Stop paying full price",
     line2: "for reusable context.",
   },
-  body: "Drop your email, grab the CLI, and run the audit on your local agent sessions or cloud traces in minutes.",
+  body: "Grab the CLI command and run the audit on your local agent sessions or cloud traces in minutes.",
 } as const
 
 /* ─── Email capture ─────────────────────────────────────────────────── */

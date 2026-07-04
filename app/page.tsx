@@ -1,14 +1,8 @@
 import type { Metadata } from "next"
 import Image from "next/image"
-import { EmailCapture } from "@/components/landing/email-capture"
+import { LocalReportCli } from "@/components/landing/local-report-cli"
 import { TerminalDemo } from "@/components/landing/terminal-demo"
 import { FallingPattern } from "@/components/ui/falling-pattern"
-import {
-  RiBarChartBoxFill,
-  RiMoneyDollarCircleFill,
-  RiShieldCheckFill,
-  RiTimeFill,
-} from "@/components/icons/remixicon"
 
 import { hero, providers, demo, banner, proof, report, cta, footer, nav } from "@/content/landing/copy"
 import { proofClaims } from "@/content/landing/proof-claims"
@@ -16,13 +10,6 @@ import { agentReportSections, agentReportPrompt } from "@/content/landing/sample
 import { langsmithReportSections, langsmithReportPrompt } from "@/content/landing/sample-langsmith-report"
 
 const siteUrl = "https://cachecatch.spielos.xyz"
-
-const iconMap = {
-  money: RiMoneyDollarCircleFill,
-  time: RiTimeFill,
-  shield: RiShieldCheckFill,
-  chart: RiBarChartBoxFill,
-} as const
 
 export const metadata: Metadata = {
   title: "CacheCatch — Prompt Cache Audit & Cost Optimization",
@@ -164,10 +151,10 @@ export default function Landing() {
               </span>
             </div>
 
-            <EmailCapture id="heroCta" />
+            <LocalReportCli id="heroCta" />
 
             <a href="#demo" className="sample-link">
-              {hero.sampleLink} <span className="tri tri-down">▼</span>
+              {hero.sampleLink} <Image className="tri tri-down" src="/landing/icons/chevron-down.svg" alt="" width={10} height={10} aria-hidden="true" />
             </a>
           </div>
         </section>
@@ -261,11 +248,11 @@ export default function Landing() {
               </ol>
               <div className="banner-cta-link">
                 <span className="sample-link sample-link-static">
-                  {banner.ctaLink} <span className="tri tri-down">▼</span>
+                  {banner.ctaLink} <Image className="tri tri-down" src="/landing/icons/chevron-down.svg" alt="" width={10} height={10} aria-hidden="true" />
                 </span>
               </div>
               <div className="banner-cta">
-                <EmailCapture id="bannerCta" />
+                <LocalReportCli id="bannerCta" />
               </div>
             </div>
           </div>
@@ -285,11 +272,10 @@ export default function Landing() {
 
             <div className="proof-grid">
               {proofClaims.map((claim) => {
-                const Icon = iconMap[claim.iconKey]
                 return (
                   <article className="proof-card" key={claim.value}>
                     <div className="icon-box" aria-hidden="true">
-                      <Icon className="size-[18px]" />
+                      <Image src={claim.iconSrc} alt="" width={18} height={18} />
                     </div>
                     <b>{claim.value}</b>
                     <span>{claim.label}</span>
@@ -364,7 +350,7 @@ export default function Landing() {
                 <span className="l-green">{cta.headline.line2}</span>
               </h2>
               <p className="section-copy">{cta.body}</p>
-              <EmailCapture id="bottomCta" />
+              <LocalReportCli id="bottomCta" />
             </div>
           </div>
         </section>
