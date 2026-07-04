@@ -304,6 +304,28 @@ try {
   assert(zeroCacheClaude?.visibility === "exact_cache_telemetry", "Claude explicit zero cache fields are exact cache telemetry")
   assert(zeroCacheClaude?.cacheReadPercent === 0, "Claude explicit cache_read_tokens: 0 renders 0 observed")
   rmSync(tmpHome4, { recursive: true, force: true })
+
+  const tmpHome5 = mkdtempSync(join(tmpdir(), "cachecatch-local-invalid-cache-"))
+  process.env.CACHECATCH_TEST_HOME = tmpHome5
+  const invalidCodexDir = join(tmpHome5, ".codex", "sessions")
+  mkdirSync(invalidCodexDir, { recursive: true })
+  writeFileSync(join(invalidCodexDir, "invalid-cache.jsonl"), JSON.stringify({
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      token_count: { input_tokens: 100, cached_input: 150, output_tokens: 10 },
+      turn_context: { model: "gpt-5-codex" },
+    },
+    session_id: "invalid-cache",
+  }), "utf-8")
+  const invalidCacheReport = buildLocalAgentAudit({ window: "1y", now: new Date(), redact: true })
+  const invalidCacheCodex = invalidCacheReport.agents.find((agent) => agent.provider === "codex")
+  assert(invalidCacheCodex?.cacheFieldPresent === true, "Invalid Codex cache rows still report that cache fields were present")
+  assert(invalidCacheCodex?.cacheReadPercent === null, "Codex cache-read percent is suppressed when cache reads exceed denominator")
+  assert(invalidCacheReport.summary.cacheReadPercent === null, "Global cache-read percent is suppressed when no valid cache denominator remains")
+  assert(invalidCacheReport.findings.some((finding) => finding.id === "invalid-cache-telemetry-semantics"), "Invalid cache denominator gets an explicit finding")
+  assert(!invalidCacheReport.summary.sanityWarnings?.some((warning) => warning.includes("outside 0-100%")), "Invalid cache rates are suppressed before report validation")
+  rmSync(tmpHome5, { recursive: true, force: true })
 } finally {
   if (oldHome === undefined) delete process.env.CACHECATCH_TEST_HOME
   else process.env.CACHECATCH_TEST_HOME = oldHome

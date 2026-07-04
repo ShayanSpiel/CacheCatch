@@ -749,11 +749,6 @@ function aggregateTelemetry(
   const hasTokenTelemetry = generic.inputTokens > 0 || generic.outputTokens > 0 || generic.totalTokens > 0 || fields.some((field) => /inputTokens|outputTokens|totalTokens/.test(field))
   const hasCacheTelemetry = fields.some((field) => /cacheReadTokens|cachedInputTokens|cacheCreationTokens|cacheWriteTokens/.test(field))
   const source = telemetrySource(provider, type, eventTypes)
-  const visibility: AgentTelemetryVisibility = hasCacheTelemetry
-    ? "exact_cache_telemetry"
-    : hasTokenTelemetry
-      ? "token_telemetry_only"
-      : "unavailable"
   const inputBasis = hasCacheTelemetry
     ? generic.cachedInputMeaning === "subset_of_input"
       ? generic.inputTokens
@@ -761,11 +756,18 @@ function aggregateTelemetry(
         ? generic.inputTokens + cacheReadTokens + cacheWriteTokens
         : null
     : null
-  const cacheReadRate = hasCacheTelemetry && inputBasis && inputBasis > 0 ? cacheReadTokens / inputBasis : null
+  const rawCacheReadRate = hasCacheTelemetry && inputBasis && inputBasis > 0 ? cacheReadTokens / inputBasis : null
+  const cacheReadRate = rawCacheReadRate !== null && rawCacheReadRate >= 0 && rawCacheReadRate <= 1 ? rawCacheReadRate : null
+  const visibility: AgentTelemetryVisibility = hasCacheTelemetry && cacheReadRate !== null
+    ? "exact_cache_telemetry"
+    : hasTokenTelemetry || hasCacheTelemetry
+      ? "token_telemetry_only"
+      : "unavailable"
   const notes = fields.slice(0, 12)
-  if (visibility === "token_telemetry_only") notes.push("Token totals were explicit, but no cache-read/cache-creation fields were observed.")
+  if (visibility === "token_telemetry_only" && !hasCacheTelemetry) notes.push("Token totals were explicit, but no cache-read/cache-creation fields were observed.")
   if (visibility === "exact_cache_telemetry" && cacheReadRate !== null) notes.push(`Cache-read rate uses explicit cache token fields only; cached input semantics: ${generic.cachedInputMeaning}.`)
-  if (visibility === "exact_cache_telemetry" && cacheReadRate === null) notes.push("Cache token fields were found, but input/cache denominator semantics are unclear; cache-read percent is suppressed.")
+  if (hasCacheTelemetry && rawCacheReadRate !== null && rawCacheReadRate > 1) notes.push(`Cache token fields were found, but cache-read tokens exceed the eligible denominator (${cacheReadTokens}/${inputBasis}); cache-read percent is suppressed.`)
+  else if (hasCacheTelemetry && cacheReadRate === null) notes.push("Cache token fields were found, but input/cache denominator semantics are unclear; cache-read percent is suppressed.")
   if (generic.tokenEventMode && generic.tokenEventMode !== "none") notes.push(`Token event aggregation mode: ${generic.tokenEventMode}.`)
   if (generic.duplicateEvents > 0) notes.push(`Duplicate token event rows skipped: ${generic.duplicateEvents}.`)
   for (const row of generic.normalizedRows.slice(0, 5)) notes.push(`Normalized token row: ${row}.`)
@@ -794,10 +796,10 @@ function aggregateTelemetry(
     requestCount: generic.requestCount,
     errorCount: generic.errorCount,
     cacheReadRate,
-    cacheReadDenominatorTokens: inputBasis,
+    cacheReadDenominatorTokens: cacheReadRate === null ? null : inputBasis,
     inputTokensMeaning: generic.inputTokensMeaning,
     cachedInputMeaning: generic.cachedInputMeaning,
-    telemetryConfidence: visibility === "exact_cache_telemetry" && cacheReadRate !== null ? "high" : visibility === "token_telemetry_only" ? "medium" : "low",
+    telemetryConfidence: visibility === "exact_cache_telemetry" ? "high" : visibility === "token_telemetry_only" && hasCacheTelemetry ? "low" : visibility === "token_telemetry_only" ? "medium" : "low",
     confidenceNotes: notes,
   }
 }
@@ -1300,8 +1302,8 @@ function loadSessions(options: LocalAuditOptions): {
             costUsd: telemetry.costUsd,
             tokenAccounting: "observed",
             hasTokenTelemetry: telemetry.visibility === "exact_cache_telemetry" || telemetry.visibility === "token_telemetry_only",
-            hasCacheTelemetry: telemetry.visibility === "exact_cache_telemetry",
-            cacheFieldPresent: telemetry.visibility === "exact_cache_telemetry",
+            hasCacheTelemetry: telemetry.visibility === "exact_cache_telemetry" && telemetry.cacheReadRate !== null,
+            cacheFieldPresent: telemetry.visibility === "exact_cache_telemetry" || telemetry.cacheReadTokens > 0 || telemetry.cacheCreationTokens > 0 || telemetry.cacheWriteTokens > 0 || telemetry.cachedInputTokens > 0,
             costFieldPresent: telemetry.costUsd !== null,
             cacheReadDenominatorTokens: telemetry.cacheReadDenominatorTokens ?? null,
             source: telemetry.source,
@@ -1509,11 +1511,12 @@ function sessionStats(sessions: LocalSession[]): {
     return sum + session.metrics.inputTokens + session.metrics.outputTokens + session.metrics.cacheWriteTokens + (cacheTokensAreSeparate ? session.metrics.cacheReadTokens : 0)
   }, 0)
   const observedSessions = sessions.filter((session) => session.metrics.tokenAccounting === "observed")
-  const observedCacheReadTokens = observedSessions.reduce((sum, session) => sum + session.metrics.cacheReadTokens, 0)
-  const denominatorValues = observedSessions
+  const validCacheSessions = observedSessions
     .filter((session) => session.metrics.hasCacheTelemetry && session.metrics.cacheReadDenominatorTokens !== null)
-    .map((session) => session.metrics.cacheReadDenominatorTokens as number)
-  const hasExactCacheTelemetry = observedSessions.some((session) => session.metrics.hasCacheTelemetry && session.metrics.cacheReadDenominatorTokens !== null)
+    .filter((session) => session.metrics.cacheReadTokens >= 0 && session.metrics.cacheReadTokens <= (session.metrics.cacheReadDenominatorTokens as number))
+  const observedCacheReadTokens = validCacheSessions.reduce((sum, session) => sum + session.metrics.cacheReadTokens, 0)
+  const denominatorValues = validCacheSessions.map((session) => session.metrics.cacheReadDenominatorTokens as number)
+  const hasExactCacheTelemetry = validCacheSessions.length > 0
   const cacheDenominator = denominatorValues.reduce((sum, value) => sum + value, 0)
   const observed = sessions.filter((session) => session.metrics.tokenAccounting === "observed").length
   const estimated = sessions.filter((session) => session.metrics.tokenAccounting === "estimated").length
@@ -1598,7 +1601,7 @@ function coverageForAgents(agents: LocalAgentReport["agents"], models: LocalAgen
     return count === items.length ? "full" : "partial"
   }
   return {
-    cacheTokenTelemetry: coverage(analyzed, (agent) => Boolean(agent.cacheFieldPresent)),
+    cacheTokenTelemetry: coverage(analyzed, (agent) => agent.cacheReadPercent !== null),
     costTelemetry: coverage(analyzed, (agent) => Boolean(agent.costFieldPresent)),
     pricingCoverage: models.length === 0 ? "unavailable" : models.every((model) => model.pricingKnown) ? "full" : models.some((model) => model.pricingKnown) ? "partial" : "unavailable",
     transcriptCoverage: coverage(analyzed, (agent) => agent.visibility === "transcript_context_only" || agent.tokenAccounting === "estimated"),
@@ -1645,6 +1648,10 @@ export function validateLocalAgentReport(report: LocalAgentReport): string[] {
   const warnings: string[] = []
   const agentTokenTotal = report.agents.reduce((sum, agent) => sum + agent.totalTokens, 0)
   if (report.summary.totalTokens !== agentTokenTotal) warnings.push(`Global token total ${report.summary.totalTokens} does not equal agent token total ${agentTokenTotal}.`)
+  if (report.summary.cacheReadPercent !== null && (report.summary.cacheReadPercent < 0 || report.summary.cacheReadPercent > 1)) warnings.push(`Global cache-read percent ${report.summary.cacheReadPercent} is outside 0-100%.`)
+  for (const agent of report.agents) {
+    if (agent.cacheReadPercent !== null && (agent.cacheReadPercent < 0 || agent.cacheReadPercent > 1)) warnings.push(`${agent.provider} cache-read percent ${agent.cacheReadPercent} is outside 0-100%.`)
+  }
   if (report.agents.some((agent) => agent.cacheReadPercent === 0 && !agent.cacheFieldPresent)) warnings.push("Missing cache telemetry rendered as 0%.")
   const staleTelemetryFinding = report.findings.some((finding) => finding.id === "local-cache-telemetry-not-reported") && report.agents.filter((agent) => agent.sessionsAnalyzed > 0).every((agent) => agent.cacheFieldPresent)
   if (staleTelemetryFinding) warnings.push("Telemetry-not-reported finding is stale: all analyzed agents have cache fields.")
@@ -1660,6 +1667,17 @@ export function validateLocalAgentReport(report: LocalAgentReport): string[] {
 
 function finding(id: string, title: string, evidence: string, recommendation: string, severity: "low" | "medium" | "high", agent?: LocalAgentProvider): LocalAgentFinding {
   return { id, title, severity, agent, evidence, recommendation }
+}
+
+function invalidCacheTelemetryFinding(agent?: LocalAgentProvider): LocalAgentFinding {
+  return finding(
+    "invalid-cache-telemetry-semantics",
+    "Cache telemetry denominator is not reliable",
+    "Cache token fields were present, but cache-read tokens exceeded the eligible input denominator or the denominator semantics were unclear.",
+    "Treat cache-read percent as not reported for these local files. Use provider/exported telemetry with explicit input-token denominator semantics before making cache-rate claims.",
+    "medium",
+    agent
+  )
 }
 
 function diagnosticZeroFinding(): LocalAgentFinding {
@@ -1920,6 +1938,9 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
   })) {
     globalFindings.push(finding("local-cache-telemetry-not-reported", "Some local agents do not report cache telemetry", "Codex/Claude local transcript files parsed by Cachecatch do not expose cache-read/cache-write token fields, so their cache percentage is shown as not reported instead of guessed.", "This is a local telemetry visibility limitation, not proof that you used the agent incorrectly. Use the context-structure findings below to fix behavior that is actually visible.", "low"))
   }
+  if (sessions.some((session) => session.metrics.cacheFieldPresent && !session.metrics.hasCacheTelemetry)) {
+    globalFindings.push(invalidCacheTelemetryFinding())
+  }
   if (unknownModelCount > 0) globalFindings.push(finding("unknown-model-pricing", "Unknown model pricing", `${unknownModelCount} detected model name(s) did not match Cachecatch's built-in pricing registry.`, "Keep token/cache percentages, but treat dollar estimates as partial until the pricing map covers those exact model strings.", "low"))
   if (allStats.cacheReadTokens + allStats.cacheWriteTokens === 0 && !globalFindings.some((item) => item.id === "local-cache-telemetry-not-reported")) {
     globalFindings.push(finding("no-cache-telemetry", "No observed cache telemetry", "Parsed local agent transcripts do not expose reliable cache-read/cache-creation telemetry.", "Treat cash saving as estimated, not guaranteed.", "low"))
@@ -1950,6 +1971,9 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
       if (agentSignals.repeatedContext > 0) agentFindingsList.push(finding("repeated-project-context", "Repeated stable project context across sessions", `${agentSignals.repeatedContext} parsed session(s) repeated stable project instructions that could live in markdown files.`, "Move stable project context into AGENTS.md and/or CLAUDE.md.", "medium"))
       if (agent !== "opencode" && !agentSessions.some((session) => session.metrics.cacheFieldPresent)) {
         agentFindingsList.push(finding("local-cache-telemetry-not-reported", "Some local agents do not report cache telemetry", "Codex/Claude local transcript files parsed by Cachecatch do not expose cache-read/cache-write token fields, so their cache percentage is shown as not reported instead of guessed.", "This is a local telemetry visibility limitation, not proof that you used the agent incorrectly. Use the context-structure findings below to fix behavior that is actually visible.", "low"))
+      }
+      if (agentSessions.some((session) => session.metrics.cacheFieldPresent && !session.metrics.hasCacheTelemetry)) {
+        agentFindingsList.push(invalidCacheTelemetryFinding(agent))
       }
       if (agentSignals.unknownPricing > 0) agentFindingsList.push(finding("unknown-model-pricing", "Unknown model pricing", `${agentSignals.unknownPricing} detected model name(s) did not match Cachecatch's built-in pricing registry.`, "Keep token/cache percentages, but treat dollar estimates as partial until the pricing map covers those exact model strings.", "low"))
     }

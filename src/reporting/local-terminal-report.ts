@@ -251,6 +251,9 @@ function findingWhy(id: string): string {
   if (id === "local-cache-telemetry-not-reported") {
     return "This is a measurement limitation, not proof of bad Codex/Claude behavior. The honest output is 'not reported' until local files expose cache-read/cache-write tokens."
   }
+  if (id === "invalid-cache-telemetry-semantics") {
+    return "Cache fields exist, but their denominator is not reliable enough for a percentage. Cachecatch suppresses the rate instead of publishing impossible math."
+  }
   if (id === "dynamic-context-early") {
     return "Prompt caching is prefix-sensitive. If diffs, logs, timestamps, and tool output appear before stable repo rules, the reusable prefix changes sooner."
   }
@@ -356,6 +359,7 @@ function renderSupportShareCard(): string {
 
 function findingRank(id: string): number {
   if (id === "dynamic-context-early") return 1
+  if (id === "invalid-cache-telemetry-semantics") return 2
   if (id === "weak-agents-md" || id === "weak-claude-md") return 3
   if (id === "repeated-project-context") return 4
   if (id === "local-cache-telemetry-not-reported" || id === "no-cache-telemetry") return 5
