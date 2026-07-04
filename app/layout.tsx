@@ -1,9 +1,10 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import Script from "next/script"
 import { JetBrains_Mono, Micro_5 } from "next/font/google"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { NotificationProvider } from "@/components/shared/notification-toast"
-import { PostHogProvider } from "@/components/analytics/posthog-provider"
+import { PostHogInit, PostHogPageView } from "@/components/analytics/posthog-provider"
 import "./globals.css"
 import "../components/landing/landing.css"
 
@@ -82,11 +83,13 @@ export default function RootLayout({
         </Script>
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <PostHogProvider>
-          <NotificationProvider>
-            <TooltipProvider>{children}</TooltipProvider>
-          </NotificationProvider>
-        </PostHogProvider>
+        <PostHogInit />
+        <Suspense fallback={null}>
+          <PostHogPageView />
+        </Suspense>
+        <NotificationProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </NotificationProvider>
       </body>
     </html>
   )

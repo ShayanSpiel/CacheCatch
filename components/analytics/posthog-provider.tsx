@@ -13,10 +13,7 @@ declare global {
   }
 }
 
-export function PostHogProvider({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-
+export function PostHogInit() {
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
     const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com"
@@ -36,6 +33,13 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
     document.head.appendChild(script)
   }, [])
 
+  return null
+}
+
+export function PostHogPageView() {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
   useEffect(() => {
     if (!window.posthog?.capture) return
     let url = pathname
@@ -44,5 +48,5 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
     window.posthog.capture("$pageview", { $current_url: url })
   }, [pathname, searchParams])
 
-  return <>{children}</>
+  return null
 }
