@@ -113,7 +113,7 @@ function printPostRunSummary(
       chalk.cyan(
         `npx --yes cachecatch@latest share --handle @yourname`
       ) +
-      chalk.gray("  (picks up this report automatically)")
+      chalk.gray("  (picks up this report automatically, no extra install)")
   )
   lines.push("")
   process.stdout.write(lines.join("\n"))
@@ -150,7 +150,7 @@ function printLocalPostRunSummary(
       chalk.cyan(
         `npx --yes cachecatch@latest share --handle @yourname`
       ) +
-      chalk.gray("  (picks up this report automatically)")
+      chalk.gray("  (picks up this report automatically, no extra install)")
   )
   lines.push("")
   process.stdout.write(lines.join("\n"))

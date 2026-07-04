@@ -23,10 +23,10 @@ npx cachecatch@latest audit local --window 7d
 Then generate your 𝕏 banner and share it:
 
 ```bash
-npx --yes cachecatch@latest share
+npx --yes cachecatch@latest share --handle @yourname
 ```
 
-`share` fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. It automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit local`, then `share`. To share a specific report instead, pass its path:
+`share` fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. It automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit local`, then `share`. Chrome is pre-warmed in the background on the first run, so the second command runs instantly with no install prompts. To share a specific report instead, pass its path:
 
 ```bash
 npx cachecatch@latest share audit.json -o ./my-card.png
@@ -223,6 +223,7 @@ All report commands support `--no-color` for plain terminal output.
 - Node.js 18+
 - An observability provider API key for platform audits
 - Rendered prompts and token usage in traces for high-confidence platform reports
+- Chrome / Chromium is auto-downloaded by `share` (and pre-warmed by every other command), so no separate browser install is needed
 
 ---
 

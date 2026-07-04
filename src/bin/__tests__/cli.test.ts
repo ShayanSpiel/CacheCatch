@@ -2,7 +2,10 @@ import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { sampleReport } from "../../../lib/cachecatch/sample-data.ts"
+import {
+  sampleReport,
+  langSmithPrefixDiagnosticReport,
+} from "../../../lib/cachecatch/sample-data.ts"
 import { buildReport } from "../../engine/index.ts"
 import { renderTerminalReport } from "../../reporting/index.ts"
 import type { NormalizedTrace } from "../../types/index.ts"
@@ -174,6 +177,111 @@ assert(
   "invalid flag gives helpful option error"
 )
 
+const lsPrefixDx = run(["sample", "--no-color", "--langsmith-prefix-diagnostic"])
+assert(lsPrefixDx.code === 0, "langsmith-prefix-diagnostic sample exits 0")
+assert(
+  lsPrefixDx.stdout.includes("REPORT MODE: PREFIX DIAGNOSTIC"),
+  "langsmith-prefix-diagnostic sample runs in prefix diagnostic mode"
+)
+assert(
+  lsPrefixDx.stdout.includes("Northstar AI Support Triage"),
+  "langsmith-prefix-diagnostic sample uses the LangSmith project name"
+)
+assert(
+  lsPrefixDx.stdout.includes("Prefix stability"),
+  "langsmith-prefix-diagnostic sample renders Prefix stability (not Cache health)"
+)
+assert(
+  !lsPrefixDx.stdout.includes("Cache health"),
+  "langsmith-prefix-diagnostic sample never renders Cache health"
+)
+assert(
+  lsPrefixDx.stdout.includes("Token usage missing") &&
+    lsPrefixDx.stdout.includes("Cache-read telemetry missing") &&
+    lsPrefixDx.stdout.includes("Cache-creation telemetry missing"),
+  "data quality uses missing wording for every absent telemetry field"
+)
+assert(
+  !lsPrefixDx.stdout.includes("! Token usage available") &&
+    !lsPrefixDx.stdout.includes("! Cache-read telemetry available") &&
+    !lsPrefixDx.stdout.includes("! Cache-creation telemetry available"),
+  "data quality never pairs a warning icon with 'available' wording"
+)
+assert(
+  lsPrefixDx.stdout.includes("×  [system_prompt_version / template_version]"),
+  "BEFORE block renders only the detected dynamic field, not generic placeholders"
+)
+assert(
+  !lsPrefixDx.stdout.includes("[timestamp / request_id / session_id]") &&
+    !lsPrefixDx.stdout.includes("[order_id / customer_id / CRM data]") &&
+    !lsPrefixDx.stdout.includes("[RAG chunks / search results]"),
+  "BEFORE block does not render generic CRM/RAG/timestamp placeholders in prefix diagnostic mode"
+)
+assert(
+  lsPrefixDx.stdout.includes("Cache-read target after fix ~35% estimated"),
+  "route diagnostic softens the cache-read target as estimated in prefix diagnostic mode"
+)
+assert(
+  !lsPrefixDx.stdout.includes("Expected after fix"),
+  "no render path uses the old 'Expected after fix' wording"
+)
+assert(
+  !lsPrefixDx.stdout.match(/! Model metadata available/),
+  "data quality never pairs a warning icon with 'Model metadata available'"
+)
+assert(
+  lsPrefixDx.stdout.includes("! Model metadata missing") ||
+    lsPrefixDx.stdout.includes("! Model pricing metadata missing / unmapped"),
+  "data quality explicitly flags missing/unmapped model metadata when pricing is not applied"
+)
+
+const lsPrefixDxJson = run(["sample", "--no-color", "--langsmith-prefix-diagnostic", "--json"])
+let lsPrefixDxParsed: typeof sampleReport | null = null
+try {
+  lsPrefixDxParsed = JSON.parse(lsPrefixDxJson.stdout) as typeof sampleReport
+} catch {
+  lsPrefixDxParsed = null
+}
+assert(lsPrefixDxParsed !== null, "langsmith-prefix-diagnostic --json prints valid JSON")
+assert(
+  lsPrefixDxParsed?.details?.reportMode === "prefix_diagnostic",
+  "langsmith-prefix-diagnostic --json pins reportMode to prefix_diagnostic"
+)
+assert(
+  lsPrefixDxParsed?.summary.estimatedMonthlyWasteUsd === 0,
+  "langsmith-prefix-diagnostic --json keeps the money estimate at zero (no telemetry)"
+)
+
+assert(
+  langSmithPrefixDiagnosticReport.details?.reportMode === "prefix_diagnostic",
+  "langSmithPrefixDiagnosticReport is exported and pinned to prefix_diagnostic mode"
+)
+
+// ---- Pre-warm: every non-meta command should kick off the background install
+//        (or no-op if Chrome is already cached). The CLI must never block on it
+//        and must never fail when puppeteer-core's transitive deps are missing.
+const meta = run(["--version"])
+assert(meta.code === 0, "--version exits 0")
+assert(
+  !meta.stdout.includes("Pre-warming banner renderer") &&
+    !meta.stderr.includes("Pre-warming banner renderer"),
+  "--version never prints the pre-warm hint (meta command)"
+)
+
+const help = run(["--help"])
+assert(help.code === 0, "--help exits 0")
+assert(
+  !help.stdout.includes("Pre-warming banner renderer") &&
+    !help.stderr.includes("Pre-warming banner renderer"),
+  "--help never prints the pre-warm hint (meta command)"
+)
+
+const sampleAfterMeta = run(["sample", "--no-color", "--instant"])
+assert(
+  sampleAfterMeta.code === 0,
+  "sample after --version still exits 0 (pre-warm must not throw)"
+)
+
 const tmp = mkdtempSync(join(tmpdir(), "cachecatch-cli-"))
 try {
   const jsonPath = join(tmp, "audit.json")
@@ -196,6 +304,19 @@ try {
   const html = readFileSync(htmlPath, "utf-8")
   assert(html.includes("<!doctype html>"), "exported file is HTML")
   assert(html.includes("Cachecatch"), "exported HTML includes product name")
+  assert(html.includes("support-card"), "exported HTML includes the support card")
+  assert(
+    html.includes("audit local --window 7d"),
+    "support card points users to the local audit command"
+  )
+  assert(
+    html.includes("npx --yes cachecatch@latest share"),
+    "support card points users to the share command"
+  )
+  assert(
+    html.includes("Thank you for choosing CacheCatch"),
+    "support card thanks the user"
+  )
 
   const missingInput = run(["export", "--format", "html", "--out", htmlPath, "--no-color"])
   assert(missingInput.code !== 0, "export without input exits non-zero")

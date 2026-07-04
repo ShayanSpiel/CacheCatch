@@ -34,4 +34,4 @@ export {
 } from "../../src/engine/scoring"
 export { buildReport } from "../../src/engine/report-builder"
 
-export { sampleReport } from "./sample-data"
+export { sampleReport, langSmithPrefixDiagnosticReport } from "./sample-data"

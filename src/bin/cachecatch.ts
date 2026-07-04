@@ -31,6 +31,7 @@ import { makeDebugCommand } from "./commands/debug.ts"
 import { makeInitCommand } from "./commands/init.ts"
 import { makeDaemonCommand, makeRunCommand, makeTelemetryCommand } from "./commands/daemon.ts"
 import { makeValidateReportCommand } from "./commands/validate-report.ts"
+import { prewarmChrome } from "../reporting/html-to-png.ts"
 
 if (process.argv.includes("--no-color") || process.env.NO_COLOR) {
   chalk.level = 0
@@ -39,6 +40,29 @@ if (process.argv.includes("--no-color") || process.env.NO_COLOR) {
 // Strip leading "--" so npx invocations like "npx cachecatch -- audit local" work
 if (process.argv[2] === "--") {
   process.argv.splice(2, 1)
+}
+
+// Pre-warm Chrome in the background so the next `cachecatch share` runs
+// instantly. Skipped for --help / --version so those stay snappy.
+// This is fire-and-forget: the foreground install path in htmlToPng()
+// handles the case where the user runs `share` before the pre-warm
+// finishes.
+const argv = process.argv.slice(2)
+const isMetaCommand = argv.length === 0 ||
+  argv[0] === "-h" || argv[0] === "--help" ||
+  argv[0] === "-v" || argv[0] === "--version" ||
+  argv[0] === "version"
+if (!isMetaCommand) {
+  // One-line hint so the user knows something is happening in the background.
+  // We only print it if stderr is a TTY to avoid polluting CI output.
+  if (process.stderr.isTTY && !process.env.CI) {
+    process.stderr.write(
+      chalk.gray(
+        "▸ Pre-warming banner renderer (one-time, ~170 MB, runs in background)…\n"
+      )
+    )
+  }
+  prewarmChrome()
 }
 
 const program = new Command()

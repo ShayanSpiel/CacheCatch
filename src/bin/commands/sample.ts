@@ -7,7 +7,10 @@
 import { Command } from "commander"
 import chalk from "chalk"
 import ora from "ora"
-import { sampleReport } from "../../../lib/cachecatch/sample-data.ts"
+import {
+  sampleReport,
+  langSmithPrefixDiagnosticReport,
+} from "../../../lib/cachecatch/sample-data.ts"
 import { renderCompactSummary } from "../../reporting/index.ts"
 import {
   coerceReportFormat,
@@ -31,6 +34,7 @@ interface SampleFlags {
   color?: boolean
   instant?: boolean
   reset?: boolean
+  langsmithPrefixDiagnostic?: boolean
 }
 
 export function makeSampleCommand(): Command {
@@ -38,7 +42,10 @@ export function makeSampleCommand(): Command {
     .description(
       "Generate a sample audit using built-in mock data. No API keys required."
     )
-    .option("--project <name>", "Project name to display", "Acme Enterprise Support Copilot")
+    .option(
+      "--project <name>",
+      "Project name to display (defaults to the sample's project name)"
+    )
     .option("-w, --window <window>", "Time window label (24h | 7d | 30d | 1y)", "7d")
     .option("-o, --out <path>", "Write report to file")
     .option("-f, --format <fmt>", "Output format: html | json", "html")
@@ -50,6 +57,10 @@ export function makeSampleCommand(): Command {
     .option("--instant", "Print the full report immediately instead of streaming sections")
     .option("--no-color", "Disable terminal colors")
     .option("--reset", "Re-generate the underlying mock dataset")
+    .option(
+      "--langsmith-prefix-diagnostic",
+      "Render the LangSmith PREFIX DIAGNOSTIC mode sample (no token / cache telemetry)"
+    )
     .action(async (flags: SampleFlags) => {
       await withErrorHandling(async () => {
         const colorEnabled = flags.color !== false
@@ -65,13 +76,18 @@ export function makeSampleCommand(): Command {
             }).start()
 
         if (spinner) {
-          spinner.text = chalk.cyan("Analyzing sample enterprise trace set...")
+          spinner.text = flags.langsmithPrefixDiagnostic
+            ? chalk.cyan("Analyzing LangSmith PREFIX DIAGNOSTIC sample...")
+            : chalk.cyan("Analyzing sample enterprise trace set...")
         }
 
+        const baseReport = flags.langsmithPrefixDiagnostic
+          ? langSmithPrefixDiagnosticReport
+          : sampleReport
         const report = {
-          ...sampleReport,
-          projectName: flags.project || sampleReport.projectName,
-          window: (flags.window as "24h" | "7d" | "30d" | "1y") || sampleReport.window,
+          ...baseReport,
+          projectName: flags.project || baseReport.projectName,
+          window: (flags.window as "24h" | "7d" | "30d" | "1y") || baseReport.window,
         }
 
         if (spinner) {

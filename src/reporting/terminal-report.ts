@@ -754,6 +754,9 @@ export function renderRouteDiagnostic(
   financial = true
 ): string {
   const share = totalLoss > 0 ? route.monthlyRecoverableLossUsd / totalLoss : 0
+  const expectedAfterFixValue = hasCacheTelemetry
+    ? C.good(`~${route.expectedCacheReadRate}`)
+    : C.warn(`~${route.expectedCacheReadRate} estimated`)
   const lines: string[] = [routeSection(`ROUTE DIAGNOSTIC: ${route.route}`), ""]
   lines.push(
     box(
@@ -764,7 +767,7 @@ export function renderRouteDiagnostic(
         `${C.muted(padRight(financial ? "Share of total loss" : "Money estimate", 27))} ${financial ? C.value(formatPercent(share)) : C.warn("unavailable / low confidence")}`,
         `${C.muted(padRight("Avg input", 27))} ${C.value(formatTokensShort(route.avgInputTokens))}`,
         `${C.muted(padRight("Cache-read now", 27))} ${C.badBold(hasCacheTelemetry ? formatPercent(route.observedCacheReadRate) : "unknown")}`,
-        `${C.muted(padRight("Expected after fix", 27))} ${C.good(`~${route.expectedCacheReadRate}`)}`,
+        `${C.muted(padRight("Cache-read target after fix", 27))} ${expectedAfterFixValue}`,
         `${C.muted(padRight("First divergence", 27))} ${C.warn(divergenceLabel(route))}`,
       ],
       financial && route.monthlyRecoverableLossUsd > 2000 ? "red" : "yellow"
@@ -821,6 +824,11 @@ export function renderRouteDiagnostic(
 export function renderOptimizedPromptStructure(report: CachecatchReport): string {
   const top = firstDiagnostic(report)
   const financial = isFinancialMode(report)
+  const hasCacheTelemetry = report.dataQuality.hasCacheReadTelemetry
+  const detectedFields = top?.detectedFields ?? []
+  const detectedFieldRow = detectedFields.length > 0
+    ? `${C.bad("×")}  [${detectedFields.join(" / ")}]`
+    : `${C.bad("×")}  [no detected dynamic field on top route]`
   const lines: string[] = [section("Before / Fix / After Prompt Map"), ""]
   lines.push(
     callout(
@@ -830,23 +838,37 @@ export function renderOptimizedPromptStructure(report: CachecatchReport): string
     )
   )
   lines.push("")
-  const beforeRows = [
-    financial
-      ? `${C.badBold("Recoverable loss")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo`)}  ${C.dim(moneyConfidenceLabel(report))}`
-      : `${C.warn("Money estimate")}  unavailable / low confidence`,
-    `${C.muted("First divergence")}  ${C.warn(divergenceLabel(top))}`,
-    `${C.muted("Cache health")}      ${C.value(`${report.score} / 100`)}  ${severity(report.score)}`,
-    "",
-    `${C.bad("×")}  [timestamp / request_id / session_id]`,
-    `${C.bad("×")}  [order_id / customer_id / CRM data]`,
-    `${C.bad("×")}  [RAG chunks / search results]`,
-    C.muted(""),
-    `${C.dim("should be cached")}  [system prompt]`,
-    `${C.dim("should be cached")}  [tool definitions]`,
-    `${C.dim("should be cached")}  [policy and rules]`,
-    `${C.dim("should be cached")}  [few-shot examples]`,
-    `${C.evidence("dynamic")}           [user message]`,
-  ]
+  const beforeRows = financial
+    ? [
+        `${C.badBold("Recoverable loss")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo`)}  ${C.dim(moneyConfidenceLabel(report))}`,
+        `${C.muted("First divergence")}  ${C.warn(divergenceLabel(top))}`,
+        `${C.muted("Cache health")}      ${C.value(`${report.score} / 100`)}  ${severity(report.score)}`,
+        "",
+        `${C.bad("×")}  [timestamp / request_id / session_id]`,
+        `${C.bad("×")}  [order_id / customer_id / CRM data]`,
+        `${C.bad("×")}  [RAG chunks / search results]`,
+        "",
+        `${C.dim("should be cached")}  [system prompt]`,
+        `${C.dim("should be cached")}  [tool definitions]`,
+        `${C.dim("should be cached")}  [policy and rules]`,
+        `${C.dim("should be cached")}  [few-shot examples]`,
+        `${C.evidence("dynamic")}           [user message]`,
+      ]
+    : [
+        `${C.warn("Money estimate")}  unavailable / low confidence`,
+        `${C.muted("First divergence")}  ${C.warn(divergenceLabel(top))}`,
+        hasCacheTelemetry
+          ? `${C.muted("Cache health")}      ${C.value(`${report.score} / 100`)}  ${severity(report.score)}`
+          : `${C.muted("Prefix stability")}  ${C.value(`${report.score} / 100`)}  ${severity(report.score)}`,
+        "",
+        detectedFieldRow,
+        "",
+        `${C.dim("should be cached")}  [system prompt]`,
+        `${C.dim("should be cached")}  [tool definitions]`,
+        `${C.dim("should be cached")}  [policy and rules]`,
+        `${C.dim("should be cached")}  [few-shot examples]`,
+        `${C.evidence("dynamic")}           [user message]`,
+      ]
   const fixRows = [
     `${C.evidence("First divergence")} ${divergenceLabel(top)}`,
     `${C.evidence("Cause")}            ${truncate(top?.cause ?? report.summary.topBreaker, 38)}`,
@@ -1049,15 +1071,32 @@ export function renderValidationPlan(report: CachecatchReport): string {
 
 export function renderDataQuality(report: CachecatchReport): string {
   const dq = report.dataQuality
+  const pricingConfidence = report.details?.pricingConfidence
+  const pricingBasis = report.details?.pricingBasis ?? ""
+  const modelPricingUnmapped =
+    dq.hasModelMetadata &&
+    (pricingConfidence === "low" || /missing or unknown|unknown for/i.test(pricingBasis))
   const items: Array<[string, boolean]> = [
-    ["Rendered prompts available", dq.hasRenderedPrompts],
-    ["Token usage available", dq.hasTokenUsage],
-    ["Cache-read telemetry available", dq.hasCacheReadTelemetry],
-    ["Cache-creation telemetry available", dq.hasCacheCreationTelemetry],
-    ["Provider metadata available", dq.hasProviderMetadata],
-    ["Model metadata available", dq.hasModelMetadata],
+    dq.hasRenderedPrompts
+      ? ["Rendered prompts available", true]
+      : ["Rendered prompts missing", false],
+    dq.hasTokenUsage ? ["Token usage available", true] : ["Token usage missing", false],
+    dq.hasCacheReadTelemetry
+      ? ["Cache-read telemetry available", true]
+      : ["Cache-read telemetry missing", false],
+    dq.hasCacheCreationTelemetry
+      ? ["Cache-creation telemetry available", true]
+      : ["Cache-creation telemetry missing", false],
+    dq.hasProviderMetadata
+      ? ["Provider metadata available", true]
+      : ["Provider metadata missing", false],
+    dq.hasModelMetadata
+      ? modelPricingUnmapped
+        ? ["Model pricing metadata missing / unmapped", false]
+        : ["Model metadata available", true]
+      : ["Model metadata missing", false],
     [`Comparable route groups: ${dq.comparableRunGroups}`, dq.comparableRunGroups > 0],
-    [`Pricing confidence: ${plainConfidence(report.details?.pricingConfidence)}`, report.details?.pricingConfidence === "high"],
+    [`Pricing confidence: ${plainConfidence(pricingConfidence)}`, pricingConfidence === "high"],
     ["Monthly projection shown", true],
   ]
   const lines: string[] = [section("Data Quality"), ""]

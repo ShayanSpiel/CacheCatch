@@ -455,3 +455,271 @@ export const sampleReport: CachecatchReport = {
     })),
   },
 }
+
+type LangSmithPrefixDiagnosticRoute = {
+  route: string
+  model: string
+  runsAnalyzed: number
+  avgInputTokens: number
+  firstDivergenceToken: number
+  reusableTokens: number
+  opportunityTokens: number
+  issue: string
+  title: string
+  fields: string[]
+  cause: string
+  type: CacheFinding["type"]
+  severity: CacheFinding["severity"]
+  sourceLocation?: string
+  evidence: {
+    traceId: string
+    changingValue: string
+    comparisonTraceId?: string
+    comparisonValue?: string
+    patternRate: string
+  }
+  whyHuman: string
+  whyTechnical: string
+  whatToChange: string[]
+  agentInstruction: string
+  successCriteria: string[]
+}
+
+const langSmithPrefixDiagnosticRoutes: LangSmithPrefixDiagnosticRoute[] = [
+  {
+    route: "support_agent.answer",
+    model: "gpt-4o",
+    runsAnalyzed: 1_280,
+    avgInputTokens: 18_400,
+    firstDivergenceToken: 32,
+    reusableTokens: 9_200,
+    opportunityTokens: 11_776_000,
+    issue:
+      "system_prompt_version and template_version are rendered before the stable support policy.",
+    title: "Dynamic system prompt versioning breaks the support prefix",
+    fields: ["system_prompt_version", "template_version"],
+    cause: "dynamic system prompt",
+    type: "dynamic_system_prompt",
+    severity: "critical",
+    sourceLocation: "src/agents/support/prompt.ts -> buildSupportPrompt()",
+    evidence: {
+      traceId: "support_agent.answer-000419",
+      changingValue: "system_prompt_version: v1.4.2",
+      comparisonTraceId: "support_agent.answer-000420",
+      comparisonValue: "system_prompt_version: v1.4.3",
+      patternRate: "87.3% of comparable support_agent.answer traces",
+    },
+    whyHuman:
+      "Every deploy bumps the version field, so the long stable policy that follows is treated like fresh context every run.",
+    whyTechnical:
+      "A version string at the top of the prefix invalidates the cache for stable policy, tools, and examples downstream on every deploy.",
+    whatToChange: [
+      "Render version-agnostic system role, support policy, refund/escalation rules, tool definitions, and static examples first.",
+      "Append system_prompt_version, template_version, request_id, customer context, user message, and tool outputs in the dynamic tail.",
+    ],
+    agentInstruction:
+      "In support_agent.answer, move system_prompt_version and template_version below the stable prefix. Render support policy, refund/escalation rules, tool definitions, and few-shot examples first; append version metadata, request_id, customer context, and tool outputs after.",
+    successCriteria: [
+      "prefix stability improves across comparable traces",
+      "first divergence moves past the version metadata line",
+      "token usage and cached-token telemetry are present in the next audit",
+    ],
+  },
+]
+
+function prefixDiagnosticFindingFor(
+  route: LangSmithPrefixDiagnosticRoute,
+  index: number
+): CacheFinding {
+  return {
+    id: `ls-prefix-dx-finding-${String(index + 1).padStart(3, "0")}`,
+    type: route.type,
+    severity: route.severity,
+    title: route.title,
+    route: route.route,
+    evidence: `Trace ${route.evidence.traceId}: first divergence at token ${route.firstDivergenceToken} on "${route.evidence.changingValue}". Pattern detected in ${route.evidence.patternRate}.`,
+    basis: "observed",
+    firstDivergenceToken: route.firstDivergenceToken,
+    estimatedLostTokens: route.reusableTokens,
+    estimatedMonthlyWasteUsd: 0,
+    recommendation: route.agentInstruction,
+  }
+}
+
+function prefixDiagnosticAuditFor(
+  route: LangSmithPrefixDiagnosticRoute,
+  index: number
+): RouteAudit {
+  const finding = prefixDiagnosticFindingFor(route, index)
+  return {
+    route: route.route,
+    model: route.model,
+    provider: "openai",
+    runsAnalyzed: route.runsAnalyzed,
+    observedInputTokens: 0,
+    observedCacheReadTokens: 0,
+    observedCacheCreationTokens: 0,
+    observedCacheReadRate: null,
+    estimatedReusableTokensAfterDivergence: route.reusableTokens,
+    estimatedCacheOpportunityTokens: route.opportunityTokens,
+    estimatedMonthlyWasteUsd: 0,
+    avgInputTokens: route.avgInputTokens,
+    avgFirstDivergenceToken: route.firstDivergenceToken,
+    findings: [finding],
+  }
+}
+
+const langSmithPrefixDiagnosticAudits = langSmithPrefixDiagnosticRoutes.map(
+  prefixDiagnosticAuditFor
+)
+const langSmithPrefixDiagnosticFindings = langSmithPrefixDiagnosticRoutes.map(
+  prefixDiagnosticFindingFor
+)
+
+const lsPrefixDxObservedInputTokens = 0
+const lsPrefixDxRunsAnalyzed = langSmithPrefixDiagnosticRoutes.reduce(
+  (sum, route) => sum + route.runsAnalyzed,
+  0
+)
+const lsPrefixDxWindowMissedReusableTokens = langSmithPrefixDiagnosticRoutes.reduce(
+  (sum, route) => sum + route.runsAnalyzed * route.reusableTokens,
+  0
+)
+const lsPrefixDxProjectedMonthlyMissedReusableTokens = Math.round(
+  lsPrefixDxWindowMissedReusableTokens * (30 / 7)
+)
+const lsPrefixDxProjectedMonthlyRuns = Math.round(
+  lsPrefixDxRunsAnalyzed * (30 / 7)
+)
+
+/**
+ * LangSmith PREFIX DIAGNOSTIC mode sample.
+ *
+ * Models the realistic state of a LangSmith project where:
+ *  - rendered prompts are present
+ *  - provider + model fields are present
+ *  - token usage and cache telemetry are NOT exported
+ *  - the only detected prefix breaker is dynamic system prompt versioning
+ *
+ * This drives every PREFIX DIAGNOSTIC mode rendering path: the
+ * "savings not provable yet" hero, the data-quality "missing" rows,
+ * the prefix-stability label, and the BEFORE / FIX / AFTER map that
+ * only renders the detected field (no generic placeholders).
+ */
+export const langSmithPrefixDiagnosticReport: CachecatchReport = {
+  id: "sample-langsmith-prefix-diagnostic-001",
+  createdAt: "2026-07-04T00:00:00Z",
+  source: "langsmith",
+  projectName: "Northstar AI Support Triage",
+  projectUrl:
+    "https://smith.langchain.com/o/northstar/projects/support-triage",
+  window: "7d",
+  score: 0,
+  confidence: "medium",
+  summary: {
+    runsAnalyzed: lsPrefixDxRunsAnalyzed,
+    routesAnalyzed: langSmithPrefixDiagnosticRoutes.length,
+    observedCacheReadTokens: 0,
+    observedCacheCreationTokens: 0,
+    observedInputTokens: lsPrefixDxObservedInputTokens,
+    observedOutputTokens: 0,
+    observedCacheReadRate: null,
+    estimatedReusableTokensAfterDivergence: Math.round(
+      lsPrefixDxWindowMissedReusableTokens / Math.max(1, lsPrefixDxRunsAnalyzed)
+    ),
+    estimatedCacheOpportunityTokens: lsPrefixDxProjectedMonthlyMissedReusableTokens,
+    estimatedMonthlyWasteUsd: 0,
+    topBreaker:
+      "Dynamic system prompt versioning breaks the support prefix before stable policy, tool definitions, and examples.",
+  },
+  routes: langSmithPrefixDiagnosticAudits,
+  findings: langSmithPrefixDiagnosticFindings,
+  recommendedLayout: {
+    stablePrefix: [
+      "[system role and constraints]",
+      "[policy and rules]",
+      "[tool definitions]",
+      "[static examples]",
+    ],
+    dynamicTail: [
+      "[system_prompt_version / template_version]",
+      "[user message]",
+    ],
+  },
+  fixPlan: [
+    "Priority 1 - support_agent.answer: move system_prompt_version and template_version below the stable prefix; render version-agnostic support policy, tools, and examples first.",
+  ],
+  dataQuality: {
+    hasRenderedPrompts: true,
+    hasTokenUsage: false,
+    hasCacheReadTelemetry: false,
+    hasCacheCreationTelemetry: false,
+    hasProviderMetadata: true,
+    hasModelMetadata: false,
+    comparableRunGroups: langSmithPrefixDiagnosticRoutes.length,
+    warnings: [
+      "Token usage data is missing. Waste estimates will be approximate.",
+      "Cached-token telemetry missing. Report uses prefix-drift estimation only.",
+      "Model metadata missing. Cost estimates may be less accurate.",
+    ],
+    confidenceReasons: [
+      "Rendered prompts found.",
+      "Token usage missing.",
+      "Cache-read telemetry missing.",
+      "Cache-creation telemetry missing.",
+      "Provider metadata found.",
+      "Model metadata missing.",
+      `${langSmithPrefixDiagnosticRoutes.length} comparable route group(s) found.`,
+    ],
+  },
+  details: {
+    reportMode: "prefix_diagnostic",
+    diagnosisConfidence: "medium",
+    moneyConfidence: "low",
+    pricingConfidence: "low",
+    targetCacheReadRate: "35-70%",
+    projectedMonthlyRuns: lsPrefixDxProjectedMonthlyRuns,
+    projectionFormula: `${lsPrefixDxRunsAnalyzed.toLocaleString("en-US")} * 30 / 7 = ${lsPrefixDxProjectedMonthlyRuns.toLocaleString("en-US")}`,
+    missedReusableTokensPerRun: Math.round(
+      lsPrefixDxWindowMissedReusableTokens / Math.max(1, lsPrefixDxRunsAnalyzed)
+    ),
+    windowMissedReusableTokens: lsPrefixDxWindowMissedReusableTokens,
+    windowMissedReusableTokensFormula: `${lsPrefixDxRunsAnalyzed.toLocaleString("en-US")} * ${Math.round(
+      lsPrefixDxWindowMissedReusableTokens / Math.max(1, lsPrefixDxRunsAnalyzed)
+    ).toLocaleString("en-US")} = ${lsPrefixDxWindowMissedReusableTokens.toLocaleString("en-US")}`,
+    projectedMonthlyMissedReusableTokens: lsPrefixDxProjectedMonthlyMissedReusableTokens,
+    monthlyMissedReusableTokensFormula: `${lsPrefixDxWindowMissedReusableTokens.toLocaleString("en-US")} * 30 / 7 = ${lsPrefixDxProjectedMonthlyMissedReusableTokens.toLocaleString("en-US")}`,
+    pricingBasis: "model metadata missing or unknown; pricing was not applied",
+    fastestFirstFix: "move system_prompt_version / template_version out of the prefix",
+    credibilityReason:
+      "rendered prompts, token usage missing, cached-token telemetry missing.",
+    savingsAccuracyNote:
+      "Money estimate unavailable / low confidence. Prompt structure issue detected. Enable token usage, cached-token telemetry, and known model pricing to calculate finance-grade savings.",
+    telemetryDocsUrl: "https://docs.smith.langchain.com/observability",
+    routeDiagnostics: langSmithPrefixDiagnosticRoutes.map((route) => ({
+      route: route.route,
+      model: route.model,
+      monthlyRecoverableLossUsd: 0,
+      avgInputTokens: route.avgInputTokens,
+      observedCacheReadRate: null,
+      expectedCacheReadRate: "35%",
+      firstDivergenceToken: route.firstDivergenceToken,
+      mainIssue: route.issue,
+      detectedFields: route.fields,
+      cause: route.cause,
+      sourceLocation: route.sourceLocation,
+      evidence: route.evidence,
+      whyItHurts: {
+        human: route.whyHuman,
+        technical: route.whyTechnical,
+      },
+      whatToChange: route.whatToChange,
+      agentInstruction: route.agentInstruction,
+      validation: {
+        command:
+          'npx cachecatch audit "Northstar AI Support Triage" --provider langsmith --window 24h',
+        successCriteria: route.successCriteria,
+      },
+    })),
+  },
+}

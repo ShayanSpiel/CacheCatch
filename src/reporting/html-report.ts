@@ -96,6 +96,16 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
 .waste { font-size: 40px; font-weight: 800; color: var(--bad); letter-spacing: -0.03em; }
 .header { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 24px; }
 .footer { border-top: 1px solid var(--border); margin-top: 48px; padding-top: 24px; color: var(--muted); font-size: 12px; }
+.support-card { border: 1px solid var(--border); border-radius: 12px; padding: 28px 24px; margin: 48px 0 0; background: var(--card); }
+.support-card .heart { color: var(--bad); font-weight: 700; }
+.support-card .lead { font-size: 15px; margin: 0 0 20px; color: var(--fg); }
+.support-steps { list-style: none; padding: 0; margin: 0; counter-reset: supportstep; }
+.support-steps li { counter-increment: supportstep; display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px dashed var(--border); }
+.support-steps li:first-child { border-top: 0; }
+.support-steps li::before { content: counter(supportstep); display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; background: var(--fg); color: #fff; font-size: 12px; font-weight: 700; margin-top: 2px; }
+.support-steps .step-title { font-weight: 600; font-size: 14px; margin: 0 0 4px; }
+.support-steps .step-cmd { display: block; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 12.5px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--fg); white-space: nowrap; overflow-x: auto; }
+.support-card .thanks { margin: 20px 0 0; font-size: 13px; color: var(--muted); }
 `
 
   const findings = report.findings
@@ -252,6 +262,30 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
           : dq.warnings.map((w) => `<p class="muted" style="margin: 4px 0;">⚠ ${escape(w)}</p>`).join("")
       }
     </div>
+  </div>
+
+  <div class="support-card">
+    <p class="lead"><span class="heart">♥</span> This report helped you? Support the project by flexing your local agent report banner on X:</p>
+    <ol class="support-steps">
+      <li>
+        <div>
+          <p class="step-title">Run the local IDE agent report</p>
+          <code class="step-cmd">npx cachecatch@latest audit local --window 7d</code>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">Run share command to generate banner</p>
+          <code class="step-cmd">npx --yes cachecatch@latest share</code>
+        </div>
+      </li>
+      <li>
+        <div>
+          <p class="step-title">Share the banner on X</p>
+        </div>
+      </li>
+    </ol>
+    <p class="thanks">Thank you for choosing CacheCatch.</p>
   </div>
 
   <div class="footer">

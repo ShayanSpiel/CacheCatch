@@ -46,6 +46,7 @@ body:has(.landing-page),
 html:has(.landing-page) {
   background: var(--l-bg) !important;
   scroll-behavior: smooth;
+  scroll-padding-top: 70px;
 }
 
 .landing-page .site-header {
@@ -265,7 +266,7 @@ html:has(.landing-page) {
   border-radius: 2px;
 }
 
-.landing-page .l-cta { max-width: 720px; margin: 30px auto 0; }
+.landing-page .l-cta { max-width: 720px; margin: 30px auto 0; scroll-margin-top: 70px; }
 .landing-page .email-row, .landing-page .command-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
 .landing-page .input-box, .landing-page .command-box {
   height: 50px;
@@ -1044,7 +1045,7 @@ html:has(.landing-page) {
 @media (max-width: 520px) {
   .landing-page .wrap { width: min(100% - 28px, var(--l-max)); }
   .landing-page .brand-word { font-size: 36px; }
-  .landing-page .nav-links a:not(:last-child) { display: none; }
+  .landing-page .nav-links { display: none; }
   .landing-page h1 { font-size: clamp(43px, 16vw, 62px); }
   .landing-page h2 { font-size: clamp(38px, 14vw, 56px); }
   .landing-page .provider-pill { width: calc(50% - 5px); justify-content: center; gap: 7px; padding: 0 8px; font-size: 10px; }
@@ -1054,12 +1055,13 @@ html:has(.landing-page) {
   .landing-page .provider-pill-agents { width: calc(100%); justify-content: center; gap: 5px; }
   .landing-page .provider-pill-agents .provider-icon { width: 16px; height: 16px; }
   .landing-page .provider-pill-agents .provider-tooltip { display: none; }
-  .landing-page .terminal-bar { height: 36px; padding: 0 10px; }
-  .landing-page .dots { gap: 5px; padding-right: 10px; }
-  .landing-page .dot { width: 7px; height: 7px; }
-  .landing-page .chrome-tab { padding: 0 10px; font-size: 10px; }
-  .landing-page .term-status { font-size: 9px; }
-  .landing-page .terminal-body { height: 380px; max-height: 62vh; padding: 16px 32px; font-size: 10px; line-height: 1.45; }
+  .landing-page .l-hero-pattern { display: none; }
+  .landing-page .terminal-bar { height: auto; padding: 8px 10px; flex-wrap: wrap; gap: 6px; }
+  .landing-page .dots { padding-right: 0; }
+  .landing-page .chrome-tab-bar { width: 100%; order: 3; display: flex; justify-content: center; gap: 2px; }
+  .landing-page .chrome-tab { flex: 1; justify-content: center; padding: 6px 10px; font-size: 10px; height: 30px; }
+  .landing-page .term-status { display: none; }
+  .landing-page .terminal-body { height: 380px; max-height: 62vh; padding: 16px 20px; font-size: 10px; line-height: 1.45; }
   .landing-page .terminal-report-inner { font-size: 9.5px; line-height: 1.45; }
   .landing-page .command-row { grid-template-columns: 1fr; gap: 8px; }
   .landing-page .command-box { flex-wrap: nowrap; }
@@ -1073,11 +1075,6 @@ html:has(.landing-page) {
   .landing-page .banner-steps { flex-wrap: wrap; white-space: normal; row-gap: 8px; }
 }
 @media (max-width: 640px) {
-  .landing-page .terminal-bar { flex-wrap: wrap; height: auto; padding: 6px 10px; gap: 6px; }
-  .landing-page .dots { padding-right: 0; }
-  .landing-page .chrome-tab-bar { width: 100%; order: 3; }
-  .landing-page .chrome-tab { flex: 1; justify-content: center; font-size: 9px; padding: 0 8px; }
-  .landing-page .term-status { order: 2; font-size: 8px; }
   .landing-page .terminal-body { height: 340px; max-height: 56vh; padding: 12px 16px; font-size: 9px; line-height: 1.4; }
   .landing-page .terminal-report-inner { font-size: 8.5px; line-height: 1.4; }
 }
