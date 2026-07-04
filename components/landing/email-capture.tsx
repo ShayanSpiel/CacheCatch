@@ -250,7 +250,7 @@ export function EmailCapture({ id }: { id: string }) {
           />
         </label>
         <button className="btn" type="submit" disabled={state === "submitting"}>
-          {state === "submitting" ? emailCapture.sendingLabel : emailCapture.submitLabel}<span className="btn-arrow">→</span>
+          {state === "submitting" ? <span className="cli-spinner">{emailCapture.sendingLabel}</span> : emailCapture.submitLabel}<span className="btn-arrow">→</span>
         </button>
       </form>
 

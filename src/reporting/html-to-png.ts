@@ -1,6 +1,8 @@
-import { resolve, join } from "node:path"
-import { existsSync } from "node:fs"
+import { resolve, join, dirname } from "node:path"
+import { existsSync, readdirSync } from "node:fs"
 import { homedir } from "node:os"
+import { spawn } from "node:child_process"
+import { fileURLToPath } from "node:url"
 import chalk from "chalk"
 
 export interface HtmlToPngOptions {
@@ -90,23 +92,109 @@ async function downloadChrome(
 }
 
 /**
- * Pre-warm the puppeteer cache with Chrome. Safe to call from every command
- * entry point — returns immediately if Chrome is already present. Runs the
- * download in the background and never throws.
+ * Synchronous check for "is Chrome already installed in the puppeteer cache?"
+ * Used by the pre-warm hot path so we can decide synchronously whether to
+ * spawn the detached child before `process.exit(0)` kills the event loop.
  */
-export function prewarmChrome(
-  onProgress?: (downloadedBytes: number, totalBytes: number) => void
-): void {
-  const cacheDir = getPuppeteerCacheDir()
-  void (async () => {
-    try {
-      if (await findInstalledChrome(cacheDir)) return
-      await downloadChrome(cacheDir, onProgress)
-    } catch {
-      // Non-fatal: the foreground install path in htmlToPng will retry and
-      // surface a clear error if the network is actually broken.
+function isChromeInstalledSync(cacheDir: string): boolean {
+  const chromeDir = join(cacheDir, "chrome")
+  if (!existsSync(chromeDir)) return false
+  try {
+    const platformDirs = readdirSync(chromeDir)
+    for (const platformDir of platformDirs) {
+      const buildPath = join(chromeDir, platformDir)
+      try {
+        const builds = readdirSync(buildPath)
+        if (builds.length > 0) {
+          // Confirm the executable is actually there
+          const executable = join(buildPath, "Google Chrome for Testing")
+          if (existsSync(executable)) return true
+        }
+      } catch {
+        // ignore
+      }
     }
-  })()
+  } catch {
+    // ignore
+  }
+  return false
+}
+
+/**
+ * Pre-warm the puppeteer cache with Chrome. Safe to call from every command
+ * entry point. Runs the download in a detached child process so the parent
+ * CLI exits immediately, then the child continues downloading in the
+ * background. Subsequent `cachecatch` invocations detect the cache and
+ * skip the download.
+ *
+ * Synchronous on purpose: this is called right before the CLI's
+ * `process.exit(0)`, so the spawn has to land before the event loop dies.
+ */
+export function prewarmChrome(): void {
+  const cacheDir = getPuppeteerCacheDir()
+  if (isChromeInstalledSync(cacheDir)) return
+  spawnPrewarmChild(cacheDir)
+}
+
+/**
+ * Spawn a detached Node child that runs the same download logic as the
+ * foreground path. The child inherits the parent's `node_modules` by
+ * inheriting `cwd` (the package root) plus `NODE_PATH`, so the same
+ * `@puppeteer/browsers` install is resolved.
+ */
+function spawnPrewarmChild(cacheDir: string): void {
+  try {
+    // Find the package root (where node_modules/ lives). The compiled
+    // html-to-png.js lives at dist/src/reporting/html-to-png.js — three
+    // levels up from there. Source-mode (tsx) and the packaged dist
+    // both use the same import.meta.url resolution.
+    const here = dirname(fileURLToPath(import.meta.url))
+    const pkgRoot = resolve(here, "..", "..", "..")
+
+    // Inline script: do exactly what the foreground install does, but
+    // silently. No spinner, no log — the user already saw the
+    // "Pre-warming…" hint from the parent.
+    const script = `
+import { join } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import('@puppeteer/browsers').then(async (b) => {
+  const cacheDir = ${JSON.stringify(cacheDir)}
+  await mkdir(cacheDir, { recursive: true })
+  const installed = await b.getInstalledBrowsers({ cacheDir })
+  if (installed.find((x) => x.browser === 'chrome')) return
+  const platform = b.detectBrowserPlatform()
+  if (!platform) return
+  const buildId = await b.resolveBuildId(b.Browser.CHROME, platform, b.ChromeReleaseChannel.STABLE)
+  await b.install({
+    browser: b.Browser.CHROME,
+    buildId,
+    cacheDir,
+    platform,
+    downloadProgressCallback: 'default',
+  })
+}).catch(() => { /* swallow — foreground will retry */ })
+`
+
+    const child = spawn(process.execPath, ["--input-type=module", "-e", script], {
+      cwd: pkgRoot,
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, CACHECATCH_PREWARM: "1" },
+    })
+    child.unref()
+  } catch {
+    // If we can't spawn the child for any reason, fall back to the
+    // fire-and-forget in-process download (which will keep the parent
+    // alive but at least gives the user Chrome).
+    void (async () => {
+      try {
+        if (await findInstalledChrome(cacheDir)) return
+        await downloadChrome(cacheDir)
+      } catch {
+        // ignore
+      }
+    })()
+  }
 }
 
 export async function htmlToPng(

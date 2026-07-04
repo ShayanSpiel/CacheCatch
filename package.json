@@ -1,6 +1,6 @@
 {
   "name": "cachecatch",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "description": "Prompt-cache audit CLI for AI agents — find cache breakers, estimate recoverable spend, and share your 𝕏 banner.",
   "repository": {
     "type": "git",

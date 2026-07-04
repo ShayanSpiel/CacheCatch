@@ -127,7 +127,14 @@ program
     process.exit(0)
   }
 
-program.parseAsync(process.argv).catch((err) => {
+program.parseAsync(process.argv).then(() => {
+  // Force-exit so any in-process async work (e.g. the in-process
+  // prewarm fallback) can't keep the shell waiting. The detached
+  // prewarm child (if any) is already unref'd and continues on its
+  // own. process.exit here is the only way to guarantee a snappy
+  // return after the user-visible command finishes.
+  process.exit(0)
+}).catch((err) => {
   const msg = "\n" + chalk.bgRed.whiteBright.bold(" FATAL ") + " " +
     chalk.redBright(err instanceof Error ? err.message : String(err)) + "\n"
   process.stderr.write(msg)

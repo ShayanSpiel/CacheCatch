@@ -23,7 +23,10 @@ function assert(cond: boolean, msg: string): void {
   }
 }
 
-function run(args: string[]): { code: number; stdout: string; stderr: string } {
+function run(
+  args: string[],
+  opts: { timeoutMs?: number } = {}
+): { code: number; stdout: string; stderr: string; timedOut: boolean } {
   const res = spawnSync(process.execPath, ["dist/index.js", ...args], {
     cwd: process.cwd(),
     encoding: "utf-8",
@@ -31,11 +34,13 @@ function run(args: string[]): { code: number; stdout: string; stderr: string } {
       ...process.env,
       NO_COLOR: "",
     },
+    timeout: opts.timeoutMs ?? 30000,
   })
   return {
     code: res.status ?? 1,
     stdout: res.stdout || "",
     stderr: res.stderr || "",
+    timedOut: res.signal === "SIGTERM",
   }
 }
 
@@ -280,6 +285,15 @@ const sampleAfterMeta = run(["sample", "--no-color", "--instant"])
 assert(
   sampleAfterMeta.code === 0,
   "sample after --version still exits 0 (pre-warm must not throw)"
+)
+
+// ---- CLI must NOT block on the pre-warm download. With a 12s timeout, a
+//        non-meta command (sample/audit/etc) must complete well within that
+//        window — the pre-warm is a detached child, not an in-process wait.
+const fastExit = run(["sample", "--no-color", "--instant"], { timeoutMs: 12000 })
+assert(
+  !fastExit.timedOut,
+  "sample completes within 12s (pre-warm must NOT block the parent CLI)"
 )
 
 const tmp = mkdtempSync(join(tmpdir(), "cachecatch-cli-"))
