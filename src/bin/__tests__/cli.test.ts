@@ -343,22 +343,24 @@ try {
   ])
   assert(exported.code === 0, "export command exits 0")
   assert(existsSync(htmlPath), "export command creates expected file")
-  const html = readFileSync(htmlPath, "utf-8")
-  assert(html.includes("<!doctype html>"), "exported file is HTML")
-  assert(html.includes("Cachecatch"), "exported HTML includes product name")
-  assert(html.includes("support-card"), "exported HTML includes the support card")
-  assert(
-    html.includes("audit local --window 7d"),
-    "support card points users to the local audit command"
-  )
-  assert(
-    html.includes("npx --yes cachecatch@latest share"),
-    "support card points users to the share command"
-  )
-  assert(
-    html.includes("Thank you for choosing CacheCatch"),
-    "support card thanks the user"
-  )
+  if (existsSync(htmlPath)) {
+    const html = readFileSync(htmlPath, "utf-8")
+    assert(html.includes("<!doctype html>"), "exported file is HTML")
+    assert(html.includes("Cachecatch"), "exported HTML includes product name")
+    assert(html.includes("support-card"), "exported HTML includes the support card")
+    assert(
+      html.includes("audit local --window 7d"),
+      "support card points users to the local audit command"
+    )
+    assert(
+      html.includes("npx --yes cachecatch@latest share"),
+      "support card points users to the share command"
+    )
+    assert(
+      html.includes("Thank you for choosing CacheCatch"),
+      "support card thanks the user"
+    )
+  }
 
   const missingInput = run(["export", "--format", "html", "--out", htmlPath, "--no-color"])
   assert(missingInput.code !== 0, "export without input exits non-zero")
