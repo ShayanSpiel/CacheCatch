@@ -26,7 +26,16 @@ Then generate your 𝕏 banner and share it:
 npx --yes cachecatch@latest share --handle @yourname
 ```
 
-`share` fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. It automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit local`, then `share`. Chrome is pre-warmed in the background on the first run, so the second command runs instantly with no install prompts. To share a specific report instead, pass its path:
+`share` fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. It automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit local`, then `share`. Chrome is pre-warmed in the background on the first run, so the second command runs instantly with no install prompts.
+
+Add `--open` to open the PNG in your OS default image viewer (Preview, Photos, etc.) after it's generated, or `--reveal` to show it in Finder / Explorer:
+
+```bash
+npx --yes cachecatch@latest share --handle @yourname --open
+npx --yes cachecatch@latest share --handle @yourname --reveal
+```
+
+To share a specific report instead, pass its path:
 
 ```bash
 npx --yes cachecatch@latest share audit.json -o ./my-card.png

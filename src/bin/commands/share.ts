@@ -13,7 +13,8 @@
 import { Command } from "commander"
 import chalk from "chalk"
 import { readFileSync, existsSync } from "node:fs"
-import { resolve } from "node:path"
+import { resolve, dirname } from "node:path"
+import { spawn } from "node:child_process"
 import { input, confirm } from "@inquirer/prompts"
 import { sampleReport } from "../../../lib/cachecatch/sample-data.ts"
 import { renderXCardHtml } from "../../reporting/x-card.ts"
@@ -30,6 +31,52 @@ interface ShareFlags {
   out?: string
   color?: boolean
   verified?: boolean
+  open?: boolean
+  reveal?: boolean
+}
+
+/**
+ * Open a file in the OS default viewer. macOS: `open`, Linux: `xdg-open`,
+ * Windows: `cmd /c start ""`. Best-effort: never throws, exits silently
+ * if the opener isn't on PATH (CI, headless servers, etc).
+ */
+function openInOS(filePath: string): void {
+  try {
+    let cmd: string
+    let args: string[]
+    if (process.platform === "darwin") {
+      cmd = "open"
+      args = [filePath]
+    } else if (process.platform === "win32") {
+      cmd = "cmd"
+      args = ["/c", "start", "", filePath]
+    } else {
+      cmd = "xdg-open"
+      args = [filePath]
+    }
+    const child = spawn(cmd, args, { detached: true, stdio: "ignore" })
+    child.unref()
+  } catch {
+    // ignore — best-effort
+  }
+}
+
+/**
+ * Reveal a file in the OS file manager (Finder / Explorer / xdg).
+ * macOS: `open -R`, Windows: `explorer /select,`, Linux: opens the parent dir.
+ */
+function revealInOS(filePath: string): void {
+  try {
+    if (process.platform === "darwin") {
+      spawn("open", ["-R", filePath], { detached: true, stdio: "ignore" }).unref()
+    } else if (process.platform === "win32") {
+      spawn("explorer", [`/select,${filePath}`], { detached: true, stdio: "ignore" }).unref()
+    } else {
+      spawn("xdg-open", [dirname(filePath)], { detached: true, stdio: "ignore" }).unref()
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function extractHandle(raw: string): string {
@@ -122,6 +169,8 @@ export function makeShareCommand(): Command {
     .option("--handle <handle>", "X handle (e.g. @ShayanSpiel) — skips interactive prompt")
     .option("-o, --out <path>", "Output PNG path (auto-numbered if omitted)")
     .option("--verified", "Show X Verified badge on the card")
+    .option("--open", "Open the generated PNG in the OS default viewer (Preview, Photos, etc)")
+    .option("--reveal", "Reveal the generated PNG in the OS file manager (Finder, Explorer)")
     .option("--no-color", "Disable terminal colors")
     .action(async (inputPath: string | undefined, flags: ShareFlags) => {
       await withErrorHandling(async () => {
@@ -278,6 +327,15 @@ export function makeShareCommand(): Command {
           fail("Failed to generate banner")
         }
 
+        // ---- Open / reveal the PNG in the OS shell ---------------------
+        if (flags.open) {
+          openInOS(savedPath)
+          process.stderr.write(chalk.gray("  ▸ Opened in your default image viewer.\n"))
+        } else if (flags.reveal) {
+          revealInOS(savedPath)
+          process.stderr.write(chalk.gray("  ▸ Revealed in your file manager.\n"))
+        }
+
         // ---- Print result -----------------------------------------------
         // ---- Suggested tweet --------------------------------------------
         const tweetText = isLocal
@@ -289,6 +347,13 @@ export function makeShareCommand(): Command {
         process.stdout.write(
           `${chalk.whiteBright.bold("▶ PNG Banner")} ${chalk.gray("[⌘ + Click to open]")}: ${fileLink(savedPath)}\n`
         )
+        if (flags.open || flags.reveal) {
+          process.stdout.write(
+            chalk.gray(
+              `  Tip: pass --open or --reveal next time to auto-open in your viewer / Finder.`
+            ) + "\n"
+          )
+        }
         if (sourcePath) {
           process.stdout.write(
             chalk.gray(`  Generated from: ${chalk.cyan(sourcePath)}\n`)

@@ -77,6 +77,18 @@ assert(
   "post-run JSON path is rendered as an OSC 8 clickable file link"
 )
 
+// ---- share --help exposes the --open and --reveal flags ----
+const shareHelp = run(["share", "--help"])
+assert(shareHelp.code === 0, "share --help exits 0")
+assert(
+  shareHelp.stdout.includes("--open"),
+  "share --help advertises --open (auto-open PNG in OS viewer)"
+)
+assert(
+  shareHelp.stdout.includes("--reveal"),
+  "share --help advertises --reveal (auto-reveal PNG in OS file manager)"
+)
+
 const compact = run(["sample", "--compact", "--no-color"])
 assert(compact.code === 0, "sample --compact exits 0")
 assert(compact.stdout.includes("Fastest Payback"), "compact mode renders compact summary")
