@@ -60,6 +60,14 @@ assert(sample.stdout.includes("RECOVERABLE CACHE SAVINGS"), "sample report rende
 assert(sample.stdout.includes("$15,000"), "$15,000 sample estimate renders")
 assert(sample.stdout.includes("enterprise workload example"), "sample report still shows enterprise demo note")
 assert(!sample.stdout.includes("FULL AGENT REPAIR PROMPT"), "default sample output hides full agent prompt")
+assert(
+  sample.stdout.includes("npx --yes cachecatch@latest share --handle @yourname"),
+  "post-run summary shows the share command on its own line"
+)
+assert(
+  sample.stdout.includes("--yes flag is required"),
+  "post-run summary warns that --yes is required to skip npx's install prompt"
+)
 
 const compact = run(["sample", "--compact", "--no-color"])
 assert(compact.code === 0, "sample --compact exits 0")

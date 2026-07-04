@@ -108,12 +108,17 @@ function printPostRunSummary(
     )
   )
   lines.push("")
+  lines.push(chalk.whiteBright("  Next — copy/paste this exact line:"))
+  lines.push("")
   lines.push(
-    chalk.whiteBright("  Next: ") +
-      chalk.cyan(
-        `npx --yes cachecatch@latest share --handle @yourname`
-      ) +
-      chalk.gray("  (picks up this report automatically, no extra install)")
+    "    " + chalk.cyan.bold(`npx --yes cachecatch@latest share --handle @yourname`)
+  )
+  lines.push("")
+  lines.push(
+    chalk.gray(
+      "  The --yes flag is required to skip npx's install prompt.\n" +
+      "  Omit --handle to be prompted for it interactively."
+    )
   )
   lines.push("")
   process.stdout.write(lines.join("\n"))
@@ -145,12 +150,17 @@ function printLocalPostRunSummary(
     )
   )
   lines.push("")
+  lines.push(chalk.whiteBright("  Next — copy/paste this exact line:"))
+  lines.push("")
   lines.push(
-    chalk.whiteBright("  Next: ") +
-      chalk.cyan(
-        `npx --yes cachecatch@latest share --handle @yourname`
-      ) +
-      chalk.gray("  (picks up this report automatically, no extra install)")
+    "    " + chalk.cyan.bold(`npx --yes cachecatch@latest share --handle @yourname`)
+  )
+  lines.push("")
+  lines.push(
+    chalk.gray(
+      "  The --yes flag is required to skip npx's install prompt.\n" +
+      "  Omit --handle to be prompted for it interactively."
+    )
   )
   lines.push("")
   process.stdout.write(lines.join("\n"))

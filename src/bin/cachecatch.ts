@@ -127,14 +127,7 @@ program
     process.exit(0)
   }
 
-program.parseAsync(process.argv).then(() => {
-  // Force-exit so any in-process async work (e.g. the in-process
-  // prewarm fallback) can't keep the shell waiting. The detached
-  // prewarm child (if any) is already unref'd and continues on its
-  // own. process.exit here is the only way to guarantee a snappy
-  // return after the user-visible command finishes.
-  process.exit(0)
-}).catch((err) => {
+program.parseAsync(process.argv).catch((err) => {
   const msg = "\n" + chalk.bgRed.whiteBright.bold(" FATAL ") + " " +
     chalk.redBright(err instanceof Error ? err.message : String(err)) + "\n"
   process.stderr.write(msg)
@@ -144,3 +137,8 @@ program.parseAsync(process.argv).then(() => {
   }
   process.exit(1)
 })
+// Note: no process.exit(0) here. The detached pre-warm child is
+// unref()'d and the rest of the pre-warm path is synchronous, so the
+// Node event loop drains naturally and the shell returns
+// immediately. Calling process.exit(0) inside the parseAsync .then
+// was truncating stdout on CI (process.exit doesn't flush stdout).

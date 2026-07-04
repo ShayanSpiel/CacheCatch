@@ -129,6 +129,29 @@ export function makeSampleCommand(): Command {
           )
         }
 
+        // Post-run "Next steps" — same shape as the audit command, so the
+        // user is never confused about how to invoke the share banner flow.
+        if (!flags.json && !flags.compact) {
+          process.stdout.write("\n")
+          process.stdout.write(
+            chalk.whiteBright("  Next — copy/paste this exact line:") + "\n"
+          )
+          process.stdout.write("\n")
+          process.stdout.write(
+            "    " +
+              chalk.cyan.bold(
+                "npx --yes cachecatch@latest share --handle @yourname"
+              ) + "\n"
+          )
+          process.stdout.write("\n")
+          process.stdout.write(
+            chalk.gray(
+              "  The --yes flag is required to skip npx's install prompt.\n" +
+                "  Omit --handle to be prompted for it interactively.\n"
+            )
+          )
+        }
+
         if (flags.reset) {
           process.stdout.write(
             chalk.gray("Sample data is deterministic; --reset is kept for CLI compatibility.\n")
