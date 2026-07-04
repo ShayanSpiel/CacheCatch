@@ -263,7 +263,7 @@ export function makeAuditCommand(): Command {
           } catch (e) {
             if (e instanceof NonInteractiveError) {
               fail(
-                "Missing project. Pass it as `npx cachecatch audit <project>` when running non-interactively."
+                "Missing project. Pass it as `npx --yes cachecatch audit <project>` when running non-interactively."
               )
             }
             throw e

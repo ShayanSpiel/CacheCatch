@@ -41,7 +41,7 @@ export const demo = {
     line2: "engineers can act on.",
   },
   body: "A fast CLI report that summarizes a sample audit — recoverable loss, the top leaking routes, the exact prefix break, and the prompt layout to ship next. Works with cloud traces and local IDE agent sessions alike.",
-  prompt: "npx cachecatch audit local --window 7d",
+  prompt: "npx --yes cachecatch audit local --window 7d",
   hint: "Summarized from sample report. Run locally. No prompts / keys stored.",
 } as const
 

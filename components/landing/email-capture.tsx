@@ -14,9 +14,9 @@ declare global {
 
 function buildCommand(platform: string) {
   if (platform === "local") {
-    return `npx cachecatch audit local --window 7d`
+    return `npx --yes cachecatch audit local --window 7d`
   }
-  return `npx cachecatch audit "my-agent-app" --provider ${platform} --window 7d`
+  return `npx --yes cachecatch audit "my-agent-app" --provider ${platform} --window 7d`
 }
 
 function track(event: string, properties?: Record<string, unknown>) {

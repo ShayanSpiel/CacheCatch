@@ -313,7 +313,7 @@ function diagnosticFromRoute(
     whatToChange: specificFixes(finding, route),
     agentInstruction: agentInstructionFor(finding, route),
     validation: {
-      command: `npx cachecatch audit "${report.projectName}" --window 24h`,
+      command: `npx --yes cachecatch audit "${report.projectName}" --window 24h`,
       successCriteria: [
         "cache-read rate improves materially",
         "first divergence moves after the stable prefix",
@@ -1026,7 +1026,7 @@ export function renderFullAgentPrompt(report: CachecatchReport): string {
     "- Keep analysis/provider logic out of UI components.",
     "",
     "Validation:",
-    `- Re-run: ${report.source === "sample" ? 'npx cachecatch audit "acme-support-agent" --window 24h' : `npx cachecatch audit "${report.projectName}" --provider ${report.source} --window 24h`}`,
+    `- Re-run: ${report.source === "sample" ? 'npx --yes cachecatch audit "acme-support-agent" --window 24h' : `npx --yes cachecatch audit "${report.projectName}" --provider ${report.source} --window 24h`}`,
     "- Success: cache-read rate improves materially, first divergence moves after stable prefix, and estimated recoverable cache loss drops by at least 50%.",
   ]
 
@@ -1043,8 +1043,8 @@ export function renderValidationPlan(report: CachecatchReport): string {
   const financial = isFinancialMode(report)
   const command =
     report.source === "sample"
-      ? 'npx cachecatch audit "acme-support-agent" --window 24h'
-      : `npx cachecatch audit "${report.projectName}" --provider ${report.source} --window 24h`
+      ? 'npx --yes cachecatch audit "acme-support-agent" --window 24h'
+      : `npx --yes cachecatch audit "${report.projectName}" --provider ${report.source} --window 24h`
   const nonZero = routeDiagnostics(report).filter((route) => route.monthlyRecoverableLossUsd > 0)
   const selected = (nonZero.length > 0 ? nonZero : routeDiagnostics(report)).slice(0, 3)
   const criteria = selected.flatMap((route, index) => {
@@ -1155,12 +1155,12 @@ export function renderExportCommands(report: CachecatchReport): string {
   const provider = report.source === "sample" ? "langsmith" : report.source
   const jsonCommand =
     report.source === "sample"
-      ? "npx cachecatch sample --json > ./cachecatch-report.json"
-      : `npx cachecatch audit "${report.projectName}" --provider ${provider} --window ${report.window} --json > ./cachecatch-report.json`
+      ? "npx --yes cachecatch sample --json > ./cachecatch-report.json"
+      : `npx --yes cachecatch audit "${report.projectName}" --provider ${provider} --window ${report.window} --json > ./cachecatch-report.json`
   const writeCommand =
     report.source === "sample"
-      ? "npx cachecatch sample --format json --out ./cachecatch-report.json"
-      : `npx cachecatch audit "${report.projectName}" --provider ${provider} --window ${report.window} --format json --out ./cachecatch-report.json`
+      ? "npx --yes cachecatch sample --format json --out ./cachecatch-report.json"
+      : `npx --yes cachecatch audit "${report.projectName}" --provider ${provider} --window ${report.window} --format json --out ./cachecatch-report.json`
   return [
     section(report.source === "sample" ? "Export / Run Real Audit Commands" : "Export Commands"),
     "",
@@ -1168,9 +1168,9 @@ export function renderExportCommands(report: CachecatchReport): string {
       "Commands",
       [
         `${C.muted("Save JSON")}            ${jsonCommand}`,
-        `${C.muted("Export HTML")}          npx cachecatch export ./cachecatch-report.json --format html --out ./cachecatch-report.html`,
+        `${C.muted("Export HTML")}          npx --yes cachecatch export ./cachecatch-report.json --format html --out ./cachecatch-report.html`,
         `${C.muted("Write JSON directly")}  ${writeCommand}`,
-        `${C.muted("Run real audit")}       npx cachecatch audit "your-agent-app" --provider ${provider} --window 7d`,
+        `${C.muted("Run real audit")}       npx --yes cachecatch audit "your-agent-app" --provider ${provider} --window 7d`,
       ],
       "cyan"
     ),
@@ -1239,7 +1239,7 @@ export function renderShareCta(report: CachecatchReport): string {
   return [
     "",
     `${C.bad("\u2764\uFE0F")}  ${C.heading("Support the project by sharing your report on X")}`,
-    `    ${C.brand("npx cachecatch share")} ${C.muted(jsonPath)}`,
+    `    ${C.brand("npx --yes cachecatch share")} ${C.muted(jsonPath)}`,
     "",
   ].join("\n")
 }
@@ -1276,11 +1276,11 @@ export function renderCompactSummary(report: CachecatchReport): string {
   lines.push(`  ${C.good("→")} Fix summary: ${fastestFix(report)}.`)
   lines.push("")
   lines.push("  Export this sample:")
-  lines.push("    npx cachecatch sample --full --out ./cachecatch-report.html")
+  lines.push("    npx --yes cachecatch sample --full --out ./cachecatch-report.html")
   lines.push("")
   lines.push("  Run on real traces:")
-  lines.push('    npx cachecatch audit "your-agent-app" --provider langsmith --window 7d')
+  lines.push('    npx --yes cachecatch audit "your-agent-app" --provider langsmith --window 7d')
   lines.push("")
-  lines.push(`  ${C.bad("\u2764\uFE0F")}  Share your report on X: npx cachecatch share ./cachecatch-report.json`)
+  lines.push(`  ${C.bad("\u2764\uFE0F")}  Share your report on X: npx --yes cachecatch share ./cachecatch-report.json`)
   return lines.join("\n")
 }

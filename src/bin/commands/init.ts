@@ -35,7 +35,7 @@ function initCodex(): void {
   writeFileSync(configPath, upsertCodexOtelConfig(existing), "utf-8")
   process.stdout.write(chalk.greenBright("Codex OTel config updated.\n"))
   process.stdout.write("Run:\n")
-  process.stdout.write(chalk.cyan("  npx cachecatch daemon\n"))
+  process.stdout.write(chalk.cyan("  npx --yes cachecatch daemon\n"))
   process.stdout.write(chalk.cyan("  codex\n"))
   process.stdout.write(chalk.gray("Prompts are redacted by default via log_user_prompt=false. The endpoint is localhost only.\n"))
 }
@@ -58,7 +58,7 @@ function initClaude(includeToolDetails: boolean): void {
   process.stdout.write(chalk.greenBright(`Claude Code OTel env file written to ${envPath}\n`))
   process.stdout.write("Run:\n")
   process.stdout.write(chalk.cyan(`  source ${envPath}\n`))
-  process.stdout.write(chalk.cyan("  npx cachecatch daemon\n"))
+  process.stdout.write(chalk.cyan("  npx --yes cachecatch daemon\n"))
   process.stdout.write(chalk.cyan("  claude\n"))
   process.stdout.write(chalk.gray("Raw prompts, assistant responses, tool content, and raw API bodies are not enabled by default.\n"))
 }

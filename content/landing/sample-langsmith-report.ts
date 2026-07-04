@@ -44,4 +44,4 @@ const sections = [
 
 export const langsmithReportSections: string[] = sections.map((s) => ansiToHtml(s))
 
-export const langsmithReportPrompt = "npx cachecatch audit local --window 7d"
+export const langsmithReportPrompt = "npx --yes cachecatch audit local --window 7d"

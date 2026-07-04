@@ -21,4 +21,4 @@ export const agentReportSections: string[] = raw
   .filter((s) => s.trim())
   .map((section) => ansiToHtml(section))
 
-export const agentReportPrompt = "npx cachecatch audit local --window 7d"
+export const agentReportPrompt = "npx --yes cachecatch audit local --window 7d"

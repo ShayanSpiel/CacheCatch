@@ -109,7 +109,7 @@ export default function Landing() {
               "Local IDE agent audit",
             ],
             applicationSuite: "CacheCatch",
-            softwareVersion: "0.4.9",
+            softwareVersion: "0.4.10",
             screenshot: `${siteUrl}/landing/og.jpg`,
           }),
         }}
@@ -270,7 +270,7 @@ export default function Landing() {
                 </li>
                 <li>
                   <span className="l-num">2</span>
-                  <span>After report → <code>npx cachecatch share</code></span>
+                  <span>After report → <code>npx --yes cachecatch share</code></span>
                 </li>
                 <li>
                   <span className="l-num">3</span>

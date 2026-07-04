@@ -4,7 +4,7 @@ export const APP_NAME = "Cachecatch"
 export const APP_TAGLINE = "Prompt CacheOps"
 export const APP_DESCRIPTION =
   "Cachecatch audits LangSmith / Langfuse / Braintrust traces, detects prompt-cache breakers, estimates wasted spend, and gives exact fixes."
-export const APP_VERSION = "0.4.9"
+export const APP_VERSION = "0.4.10"
 
 export const MAX_RUNS_FETCH = 300
 export const DEFAULT_PRICE_PER_1K_TOKENS_USD = 0.003

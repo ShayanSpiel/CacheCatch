@@ -181,7 +181,7 @@ export function makeRunCommand(): Command {
       await withErrorHandling(async () => {
         const envPath = join(homedir(), ".cachecatch", "claude-code-otel.env")
         if (!existsSync(envPath)) {
-          throw new Error("Claude env file not found. Run `npx cachecatch init claude` first.")
+          throw new Error("Claude env file not found. Run `npx --yes cachecatch init claude` first.")
         }
         const env = { ...process.env }
         for (const line of readFileSync(envPath, "utf-8").split(/\r?\n/)) {

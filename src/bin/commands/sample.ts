@@ -122,10 +122,10 @@ export function makeSampleCommand(): Command {
             chalk.gray(`\n  → Auto-saved JSON: ${chalk.cyan(autoSavedPath)}\n`)
           )
           process.stdout.write(
-            chalk.gray("  → Save JSON: npx cachecatch sample --format json --out ./cachecatch-report.json\n")
+            chalk.gray("  → Save JSON: npx --yes cachecatch sample --format json --out ./cachecatch-report.json\n")
           )
           process.stdout.write(
-            chalk.gray("  → Save HTML: npx cachecatch sample --out ./cachecatch-report.html\n")
+            chalk.gray("  → Save HTML: npx --yes cachecatch sample --out ./cachecatch-report.html\n")
           )
         }
 

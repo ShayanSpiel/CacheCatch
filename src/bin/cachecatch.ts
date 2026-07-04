@@ -100,7 +100,7 @@ program
   })
 
   // Friendly help when invoked with no subcommand
-  const CMD = "npx cachecatch"
+  const CMD = "npx --yes cachecatch"
   if (process.argv.length <= 2) {
     process.stdout.write(
       `\n${chalk.cyanBright.bold("⚡ " + APP_NAME)} ${chalk.gray(

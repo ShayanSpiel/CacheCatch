@@ -449,7 +449,7 @@ export const sampleReport: CachecatchReport = {
       agentInstruction: route.agentInstruction,
       validation: {
         command:
-          'npx cachecatch audit "Acme Enterprise Support Copilot" --provider langsmith --window 24h',
+          'npx --yes cachecatch audit "Acme Enterprise Support Copilot" --provider langsmith --window 24h',
         successCriteria: route.successCriteria,
       },
     })),
@@ -717,7 +717,7 @@ export const langSmithPrefixDiagnosticReport: CachecatchReport = {
       agentInstruction: route.agentInstruction,
       validation: {
         command:
-          'npx cachecatch audit "Northstar AI Support Triage" --provider langsmith --window 24h',
+          'npx --yes cachecatch audit "Northstar AI Support Triage" --provider langsmith --window 24h',
         successCriteria: route.successCriteria,
       },
     })),

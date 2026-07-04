@@ -51,7 +51,7 @@ export function makeExportCommand(): Command {
         configureColor(flags.color !== false)
         if (!input) {
           fail(
-            "No report JSON provided. Export converts a saved CachecatchReport JSON file. First run `npx cachecatch sample --json > audit.json`, then `npx cachecatch export audit.json --format html --out ./cachecatch-report.html`."
+            "No report JSON provided. Export converts a saved CachecatchReport JSON file. First run `npx --yes cachecatch sample --json > audit.json`, then `npx --yes cachecatch export audit.json --format html --out ./cachecatch-report.html`."
           )
         }
         const format = coerceExportFormat(flags.format)

@@ -172,7 +172,7 @@ export function localAgentReportToIdeCardData(
     agents: agentRows(report),
     missRangeEstimate: rangeLabel(report),
     missRangeHigh: highPct,
-    command: "npx cachecatch audit local --window 7d",
+    command: "npx --yes cachecatch audit local --window 7d",
     domain: options.domain ?? "cachecatch.spielos.xyz",
     agentProfile: {
       primaryModel: pm.model,
@@ -210,7 +210,7 @@ export function demoIdeAgentXCardData(): IdeAgentXCardData {
     ],
     missRangeEstimate: "~19–36%",
     missRangeHigh: 36,
-    command: "npx cachecatch audit local --window 7d",
+    command: "npx --yes cachecatch audit local --window 7d",
     domain: "cachecatch.spielos.xyz",
     agentProfile: {
       primaryModel: "deepseek-v4-flash-free",
@@ -244,7 +244,7 @@ export function renderIdeAgentXCardHtml(data: IdeAgentXCardData): string {
   const auditLabel =
     data.auditLabel || `CacheCatch ${data.windowLabel} IDE Agent Report`
   const domain = data.domain || "cachecatch.spielos.xyz"
-  const command = data.command || "npx cachecatch audit local --window 7d"
+  const command = data.command || "npx --yes cachecatch audit local --window 7d"
   const agents = [...data.agents]
   while (agents.length < 3)
     agents.push({ name: "\u2014", count: "0", logoUrl: "" })

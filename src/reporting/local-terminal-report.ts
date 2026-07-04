@@ -221,8 +221,8 @@ function sourceLabel(agent: LocalAgentReport["agents"][number]): string {
 
 function setupHint(agent: LocalAgentReport["agents"][number]): string | null {
   if (agent.sessionsAnalyzed === 0 || agent.cacheFieldPresent) return null
-  if (agent.provider === "codex") return "Run `npx cachecatch init codex` to enable future Codex OTel telemetry."
-  if (agent.provider === "claude-code") return "Run `npx cachecatch init claude`, then start Claude Code with the generated env file to enable future cache/token telemetry."
+  if (agent.provider === "codex") return "Run `npx --yes cachecatch init codex` to enable future Codex OTel telemetry."
+  if (agent.provider === "claude-code") return "Run `npx --yes cachecatch init claude`, then start Claude Code with the generated env file to enable future cache/token telemetry."
   return null
 }
 
@@ -338,7 +338,7 @@ function renderSupportShareCard(): string {
   const width = reportWidth()
   const contentWidth = Math.max(20, width - 4)
   const rows = [
-    `${chalk.whiteBright("Support Cachecatch:")} copy and run ${chalk.cyanBright("npx cachecatch share")} to generate your share banner.`,
+    `${chalk.whiteBright("Support Cachecatch:")} copy and run ${chalk.cyanBright("npx --yes cachecatch share")} to generate your share banner.`,
     chalk.gray("It will ask for your X handle, make the PNG, and print ready-to-use X copy/link."),
   ].flatMap((row) => wrapAnsiText(row, contentWidth))
 
@@ -490,7 +490,7 @@ export function renderLocalAgentTerminalReport(
     lines.push(chalk.whiteBright.bold("■ TELEMETRY SETUP"))
     lines.push(miniBox("Enable Future Exact Telemetry", [
       ...setupHints,
-      "Then run `npx cachecatch daemon` while using the agent.",
+      "Then run `npx --yes cachecatch daemon` while using the agent.",
     ], "cyan"))
   }
 
@@ -573,7 +573,7 @@ export function renderLocalAgentTerminalReport(
       report.summary.cacheReadPercent === null ? "Cache-read profile not reported" : `${fmtPct(report.summary.cacheReadPercent)} observed cache-read profile`,
       `${fmtInt(report.summary.modelsDetected)} models detected`,
       "",
-      "npx cachecatch share ./reports/<report>.json",
+      "npx --yes cachecatch share ./reports/<report>.json",
     ], "cyan"))
 
     lines.push("")

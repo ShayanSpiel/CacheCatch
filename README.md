@@ -4,7 +4,7 @@
 
 1. Run audit → 2. Run share → 3. Post on 𝕏
 
-`npx cachecatch@latest audit local --window 7d` → `npx --yes cachecatch@latest share`
+`npx --yes cachecatch@latest audit local --window 7d` → `npx --yes cachecatch@latest share`
 
 [![Sample Agentic CacheCatch Report banner](public/cachecatch-x-share.png)](https://cachecatch.spielos.xyz/#heroCta)
 
@@ -17,7 +17,7 @@ Cachecatch audits prompt-cache efficiency across two worlds: **local IDE agent s
 Audit your local coding agent sessions — no API key, no network, no config:
 
 ```bash
-npx cachecatch@latest audit local --window 7d
+npx --yes cachecatch@latest audit local --window 7d
 ```
 
 Then generate your 𝕏 banner and share it:
@@ -29,8 +29,8 @@ npx --yes cachecatch@latest share --handle @yourname
 `share` fetches your X profile picture, renders a 1024x732 banner with your audit data, and saves it as `cachecatch-x-share.png`. It automatically picks up the most recent `reports/` JSON — so the flow is just: run `audit local`, then `share`. Chrome is pre-warmed in the background on the first run, so the second command runs instantly with no install prompts. To share a specific report instead, pass its path:
 
 ```bash
-npx cachecatch@latest share audit.json -o ./my-card.png
-npx cachecatch@latest share local-report.json -o ./my-local-card.png
+npx --yes cachecatch@latest share audit.json -o ./my-card.png
+npx --yes cachecatch@latest share local-report.json -o ./my-local-card.png
 ```
 
 ### What it shows
@@ -44,14 +44,14 @@ npx cachecatch@latest share local-report.json -o ./my-local-card.png
 ### Expand the window
 
 ```bash
-npx cachecatch@latest audit local --window 30d
-npx cachecatch@latest audit local --window 30d --json ./local-report.json
+npx --yes cachecatch@latest audit local --window 30d
+npx --yes cachecatch@latest audit local --window 30d --json ./local-report.json
 ```
 
 ### Scope to one repo
 
 ```bash
-npx cachecatch@latest audit local --project /path/to/repo --window 7d
+npx --yes cachecatch@latest audit local --project /path/to/repo --window 7d
 ```
 
 ### Why some agents show cache telemetry and others do not
@@ -68,28 +68,28 @@ Cachecatch separates visibility into exact cache telemetry, token telemetry only
 ### Enable Codex telemetry
 
 ```bash
-npx cachecatch@latest init codex
-npx cachecatch@latest daemon
+npx --yes cachecatch@latest init codex
+npx --yes cachecatch@latest daemon
 codex
-npx cachecatch@latest audit local --window 7d
+npx --yes cachecatch@latest audit local --window 7d
 ```
 
 ### Enable Claude Code telemetry
 
 ```bash
-npx cachecatch@latest init claude
+npx --yes cachecatch@latest init claude
 source ~/.cachecatch/claude-code-otel.env
-npx cachecatch@latest daemon
+npx --yes cachecatch@latest daemon
 claude
-npx cachecatch@latest audit local --window 7d
+npx --yes cachecatch@latest audit local --window 7d
 ```
 
 ### Debug local telemetry
 
 ```bash
-npx cachecatch@latest debug codex-telemetry
-npx cachecatch@latest debug claude-telemetry
-npx cachecatch@latest telemetry status
+npx --yes cachecatch@latest debug codex-telemetry
+npx --yes cachecatch@latest debug claude-telemetry
+npx --yes cachecatch@latest telemetry status
 ```
 
 ---
@@ -99,7 +99,7 @@ npx cachecatch@latest telemetry status
 Audit production agent traces from LangSmith, Langfuse, or Braintrust:
 
 ```bash
-npx cachecatch@latest audit "your-project" --provider langsmith --window 7d
+npx --yes cachecatch@latest audit "your-project" --provider langsmith --window 7d
 ```
 
 ### What it shows
@@ -112,14 +112,14 @@ npx cachecatch@latest audit "your-project" --provider langsmith --window 7d
 ### See which projects your key can access
 
 ```bash
-npx cachecatch@latest projects --provider langsmith
+npx --yes cachecatch@latest projects --provider langsmith
 ```
 
 ### Set the key once in your shell
 
 ```bash
 export LANGSMITH_API_KEY="lsv2_..."
-npx cachecatch@latest audit "your-project" --provider langsmith --window 7d
+npx --yes cachecatch@latest audit "your-project" --provider langsmith --window 7d
 ```
 
 ### Langfuse
@@ -127,13 +127,13 @@ npx cachecatch@latest audit "your-project" --provider langsmith --window 7d
 ```bash
 export LANGFUSE_PUBLIC_KEY="pk-lf-..."
 export LANGFUSE_SECRET_KEY="sk-lf-..."
-npx cachecatch@latest audit "your-project" --provider langfuse --window 7d
+npx --yes cachecatch@latest audit "your-project" --provider langfuse --window 7d
 ```
 
 ### Or pass the key directly
 
 ```bash
-npx cachecatch@latest audit "your-project" --provider langsmith --window 7d --key "$LANGSMITH_API_KEY"
+npx --yes cachecatch@latest audit "your-project" --provider langsmith --window 7d --key "$LANGSMITH_API_KEY"
 ```
 
 ---
@@ -151,11 +151,11 @@ At production scale, that's real money. Cachecatch finds the exact tokens that a
 Run a realistic demo report with no network access:
 
 ```bash
-npx cachecatch@latest sample
-npx cachecatch@latest sample --compact
-npx cachecatch@latest sample --full
-npx cachecatch@latest sample --explain-math
-npx cachecatch@latest sample --out ./cachecatch-report.html
+npx --yes cachecatch@latest sample
+npx --yes cachecatch@latest sample --compact
+npx --yes cachecatch@latest sample --full
+npx --yes cachecatch@latest sample --explain-math
+npx --yes cachecatch@latest sample --out ./cachecatch-report.html
 ```
 
 ---
@@ -163,14 +163,14 @@ npx cachecatch@latest sample --out ./cachecatch-report.html
 ## Export to HTML
 
 ```bash
-npx cachecatch@latest sample --json > audit.json
-npx cachecatch@latest export audit.json --format html --out ./cachecatch-report.html
+npx --yes cachecatch@latest sample --json > audit.json
+npx --yes cachecatch@latest export audit.json --format html --out ./cachecatch-report.html
 ```
 
 Or directly from a report:
 
 ```bash
-npx cachecatch@latest sample --out ./cachecatch-report.html
+npx --yes cachecatch@latest sample --out ./cachecatch-report.html
 ```
 
 ---
@@ -236,8 +236,8 @@ All report commands support `--no-color` for plain terminal output.
 - The OTel daemon binds to localhost by default and does not send data anywhere external.
 - Codex setup uses `log_user_prompt = false`.
 - Claude setup does not enable user prompts, assistant responses, tool content, or raw API bodies by default.
-- Claude tool details are opt-in with `npx cachecatch init claude --include-tool-details`.
-- Raw OTLP bodies are not stored unless you explicitly run `npx cachecatch daemon --debug-raw`.
+- Claude tool details are opt-in with `npx --yes cachecatch init claude --include-tool-details`.
+- Raw OTLP bodies are not stored unless you explicitly run `npx --yes cachecatch daemon --debug-raw`.
 - The web app path audits server-side; the browser only receives the generated report.
 
 ### Where data lives
@@ -279,7 +279,7 @@ rm -rf ./reports ./.env ./cachecatch-x-share*.png ~/.cachecatch
 ### Missing project
 
 ```bash
-npx cachecatch@latest audit "your-project-name" --provider langsmith --window 7d
+npx --yes cachecatch@latest audit "your-project-name" --provider langsmith --window 7d
 ```
 
 Use `projects` if you are unsure which names your key can see.
@@ -302,7 +302,7 @@ export LANGFUSE_SECRET_KEY="sk-lf-..."
 Try a wider window:
 
 ```bash
-npx cachecatch@latest audit "your-project-name" --provider langsmith --window 30d
+npx --yes cachecatch@latest audit "your-project-name" --provider langsmith --window 30d
 ```
 
 Confirm that your traces include rendered prompts and LLM token usage.
@@ -310,14 +310,14 @@ Confirm that your traces include rendered prompts and LLM token usage.
 ### Export says no report JSON was provided
 
 ```bash
-npx cachecatch@latest sample --json > audit.json
-npx cachecatch@latest export audit.json --format html --out ./cachecatch-report.html
+npx --yes cachecatch@latest sample --json > audit.json
+npx --yes cachecatch@latest export audit.json --format html --out ./cachecatch-report.html
 ```
 
 ### JSON output for CI
 
 ```bash
-npx cachecatch@latest sample --json > audit.json
+npx --yes cachecatch@latest sample --json > audit.json
 ```
 
 No spinner or status text is printed in JSON mode.
@@ -406,7 +406,7 @@ To fully wipe Cachecatch and re-test a freshly published version:
 # Wipe local + HOME files
 rm -rf ./reports ./.env ./cachecatch-x-share*.png ~/.cachecatch
 
-# Wipe npx's cached copy so the next `npx cachecatch@latest` re-fetches
+# Wipe npx's cached copy so the next `npx --yes cachecatch@latest` re-fetches
 npx clear-npx-cache
 # (or, if that command isn't on your npm version)
 rm -rf ~/.npm/_npx

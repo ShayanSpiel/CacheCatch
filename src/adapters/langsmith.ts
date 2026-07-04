@@ -434,7 +434,7 @@ export const langSmithAdapter: ProviderAdapter = {
     const apiKey = process.env.LANGSMITH_API_KEY
     if (!apiKey) {
       throw new Error(
-        "LANGSMITH_API_KEY is required. Run `npx cachecatch config set-key langsmith <key>` or export LANGSMITH_API_KEY."
+        "LANGSMITH_API_KEY is required. Run `npx --yes cachecatch config set-key langsmith <key>` or export LANGSMITH_API_KEY."
       )
     }
     const client = new LangSmithClient(apiKey)
