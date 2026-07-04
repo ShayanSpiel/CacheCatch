@@ -15,8 +15,6 @@ import { proofClaims, type ProofClaim } from "@/content/landing/proof-claims"
 import { agentReportSections, agentReportPrompt } from "@/content/landing/sample-agent-report"
 import { langsmithReportSections, langsmithReportPrompt } from "@/content/landing/sample-langsmith-report"
 
-const siteUrl = "https://cachecatch.spielos.xyz"
-
 const iconMap = {
   "/landing/icons/trending-up.svg": RiMoneyDollarCircleFill,
   "/landing/icons/human-run.svg": RiTimeFill,

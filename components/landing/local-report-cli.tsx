@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { emailCapture } from "@/content/landing/copy"
 
 function buildCommand(platform: string) {
@@ -35,11 +35,10 @@ function persistPlatform(id: string, platform: string) {
 export function LocalReportCli({ id }: { id: string }) {
   const [copied, setCopied] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [platform, setPlatform] = useState("local")
-
-  useEffect(() => {
-    setPlatform(loadPlatform(id))
-  }, [id])
+  const [platform, setPlatform] = useState(() => {
+    if (typeof window === "undefined") return "local"
+    return loadPlatform(id)
+  })
 
   const cliCommand = buildCommand(platform)
 
