@@ -330,7 +330,7 @@ html:has(.landing-page) {
   outline-offset: 3px;
 }
 .landing-page .copy-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
-.landing-page .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.landing-page .btn:disabled { opacity: 1; cursor: not-allowed; transform: none; }
 .landing-page .btn:disabled .btn-arrow { display: none; }
 .landing-page .btn-arrow { display: inline-block; transition: transform .18s ease; margin-left: 2px; }
 .landing-page .btn:hover .btn-arrow { transform: translateX(3px); }
@@ -734,6 +734,14 @@ html:has(.landing-page) {
   90%  { content: "⠏"; }
   100% { content: "⠋"; }
 }
+@keyframes braille-rotate {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes braille-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
 .landing-page .cli-spinner {
   display: inline-flex;
   align-items: center;
@@ -742,9 +750,10 @@ html:has(.landing-page) {
   color: var(--l-green);
 }
 .landing-page .cli-spinner::before {
-  content: "⠋";
-  animation: braille-spin 0.8s steps(1) infinite;
-  font-size: 14px;
+  content: "⠿";
+  animation: braille-rotate 1s linear infinite;
+  font-size: 15px;
+  display: inline-block;
 }
 
 .landing-page .proof-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
@@ -1075,7 +1084,9 @@ html:has(.landing-page) {
   .landing-page .nav { grid-template-columns: 1fr auto; }
   .landing-page h1 { font-size: clamp(43px, 16vw, 62px); }
   .landing-page h2 { font-size: clamp(38px, 14vw, 56px); }
-  .landing-page .provider-pill { width: auto; justify-content: center; gap: 7px; padding: 0 8px; font-size: 10px; }
+  .landing-page .provider-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .landing-page .provider-pill { width: auto; justify-content: center; gap: 7px; padding: 0 6px; font-size: 10px; }
+  .landing-page .provider-pill:last-child { grid-column: 1 / -1; width: auto; }
   .landing-page .provider-icon-langsmith { width: 23px; height: 23px; }
   .landing-page .provider-icon-langfuse { width: 15px; height: 15px; }
   .landing-page .provider-icon-braintrust { width: 11px; height: 11px; }
