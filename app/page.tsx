@@ -109,7 +109,7 @@ export default function Landing() {
               "Local IDE agent audit",
             ],
             applicationSuite: "CacheCatch",
-            softwareVersion: "0.4.10",
+            softwareVersion: "0.4.11",
             screenshot: `${siteUrl}/landing/og.jpg`,
           }),
         }}

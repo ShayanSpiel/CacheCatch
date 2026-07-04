@@ -35,6 +35,7 @@ import {
   autoSaveLocalAgentReport,
   writeLocalAgentReportToFile,
   streamWordByWord,
+  fileLink,
 } from "../utils.ts"
 import { resolveApiKey, NonInteractiveError } from "../prompts.ts"
 import { promptForProject } from "../prompts.ts"
@@ -92,14 +93,14 @@ function printPostRunSummary(
   lines.push("")
   lines.push(chalk.gray("─".repeat(Math.min(60, process.stdout.columns || 60))))
   lines.push(chalk.cyanBright.bold("⚡ Audit complete."))
-  if (exportedTo) {
-    lines.push(
-      chalk.gray(`  → Report saved: ${chalk.cyan(exportedTo)}`)
-    )
-  }
+        if (exportedTo) {
+          lines.push(
+            chalk.gray(`  → Report saved: `) + fileLink(exportedTo)
+          )
+        }
   if (autoSavedPath) {
     lines.push(
-      chalk.gray(`  → Auto-saved JSON: ${chalk.cyan(autoSavedPath)}`)
+      chalk.gray(`  → Auto-saved JSON: ${fileLink(autoSavedPath)}`)
     )
   }
   lines.push(
@@ -141,7 +142,7 @@ function printLocalPostRunSummary(
   )
   if (autoSavedPath) {
     lines.push(
-      chalk.gray(`  → Auto-saved JSON: ${chalk.cyan(autoSavedPath)}`)
+      chalk.gray(`  → Auto-saved JSON: ${fileLink(autoSavedPath)}`)
     )
   }
   lines.push(
@@ -375,7 +376,7 @@ export function makeAuditCommand(): Command {
           const format = coerceReportFormat(flags.format || "html")
           exportedTo = writeReportToFile(report, flags.out, format)
           process.stdout.write(
-            chalk.greenBright(`\n✔ Report written to ${exportedTo}\n`)
+            chalk.greenBright(`\n✔ Report written to `) + fileLink(exportedTo) + "\n"
           )
         }
 

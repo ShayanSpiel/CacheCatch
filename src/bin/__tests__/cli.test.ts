@@ -68,6 +68,14 @@ assert(
   sample.stdout.includes("--yes flag is required"),
   "post-run summary warns that --yes is required to skip npx's install prompt"
 )
+assert(
+  sample.stdout.includes("Auto-saved JSON"),
+  "post-run summary shows the auto-saved JSON path"
+)
+assert(
+  sample.stdout.includes("\x1b]8;;file://"),
+  "post-run JSON path is rendered as an OSC 8 clickable file link"
+)
 
 const compact = run(["sample", "--compact", "--no-color"])
 assert(compact.code === 0, "sample --compact exits 0")

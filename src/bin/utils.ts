@@ -4,9 +4,43 @@
 
 import { mkdirSync, writeFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, resolve } from "node:path"
+import { realpathSync } from "node:fs"
 import chalk from "chalk"
 import type { CachecatchReport, LocalAgentReport } from "../types/index.ts"
 import { renderHtmlReport } from "../reporting/html-report.ts"
+
+/**
+ * Render a clickable file-path hyperlink for modern terminals.
+ *
+ * Uses OSC 8 escape sequences — supported by iTerm2 3.5+, Ghostty, WezTerm,
+ * Kitty, Windows Terminal, and VS Code's integrated terminal. Older
+ * terminals silently fall back to the underlined text.
+ *
+ * Returns the absolute path so the link works regardless of cwd.
+ */
+export function fileLink(absPath: string): string {
+  let resolved = absPath
+  try {
+    resolved = realpathSync(absPath)
+  } catch {
+    // File may not exist yet (just-created paths from writeFileSync); use as-is.
+  }
+  // file:// URI; OSC 8 wraps the display text in a clickable region
+  const OSC = "\x1b]8;;"
+  const ST = "\x1b\\"
+  return `${OSC}file://${resolved}${ST}${chalk.underline.cyan(resolved)}${OSC}${ST}`
+}
+
+/**
+ * Render a clickable web URL hyperlink for modern terminals (OSC 8).
+ */
+export function urlLink(url: string, label?: string): string {
+  const OSC = "\x1b]8;;"
+  const ST = "\x1b\\"
+  const text = label ?? url
+  return `${OSC}${url}${ST}${chalk.underline.cyan(text)}${OSC}${ST}`
+}
+
 import {
   renderTerminalReport,
   renderTerminalReportSections,

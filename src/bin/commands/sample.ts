@@ -18,6 +18,7 @@ import {
   writeTerminalReport,
   writeReportToFile,
   autoSaveJsonReport,
+  fileLink,
   withErrorHandling,
 } from "../utils.ts"
 
@@ -114,12 +115,12 @@ export function makeSampleCommand(): Command {
           const format = coerceReportFormat(flags.format || "html")
           const out = writeReportToFile(report, flags.out, format)
           process.stdout.write(
-            chalk.greenBright(`\n✔ Report written to ${out}\n`)
+            chalk.greenBright(`\n✔ Report written to `) + fileLink(out) + "\n"
           )
         } else if (!flags.json && !flags.compact) {
           const autoSavedPath = autoSaveJsonReport(report)
           process.stdout.write(
-            chalk.gray(`\n  → Auto-saved JSON: ${chalk.cyan(autoSavedPath)}\n`)
+            chalk.gray(`\n  → Auto-saved JSON: `) + fileLink(autoSavedPath) + "\n"
           )
           process.stdout.write(
             chalk.gray("  → Save JSON: npx --yes cachecatch sample --format json --out ./cachecatch-report.json\n")

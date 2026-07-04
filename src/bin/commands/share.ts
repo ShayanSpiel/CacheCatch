@@ -22,7 +22,7 @@ import {
   localAgentReportToIdeCardData,
 } from "../../reporting/x-card-local.ts"
 import { htmlToPng } from "../../reporting/html-to-png.ts"
-import { configureColor, fail, withErrorHandling, findLatestJsonReport } from "../utils.ts"
+import { configureColor, fail, withErrorHandling, findLatestJsonReport, fileLink, urlLink } from "../utils.ts"
 import type { CachecatchReport, LocalAgentReport } from "../../types/index.ts"
 
 interface ShareFlags {
@@ -286,7 +286,9 @@ export function makeShareCommand(): Command {
         const tweetUrl = buildTweetUrl(tweetText)
 
         process.stdout.write(chalk.whiteBright.bold(`\n✔︎ Your banner is generated\n\n`))
-        process.stdout.write(`${chalk.whiteBright.bold("▶ PNG Banner")} [⌘ + Click]: ${chalk.underline.cyan(savedPath)}\n`)
+        process.stdout.write(
+          `${chalk.whiteBright.bold("▶ PNG Banner")} ${chalk.gray("[⌘ + Click to open]")}: ${fileLink(savedPath)}\n`
+        )
         if (sourcePath) {
           process.stdout.write(
             chalk.gray(`  Generated from: ${chalk.cyan(sourcePath)}\n`)
@@ -306,7 +308,7 @@ export function makeShareCommand(): Command {
         process.stdout.write(chalk.gray("─".repeat(64)) + "\n")
 
         process.stdout.write(`\n${chalk.whiteBright.bold("Post it")}\n`)
-        process.stdout.write(`${chalk.cyanBright("1.")} Open prefilled X post: ${chalk.underline.cyan(tweetUrl)}\n`)
+        process.stdout.write(`${chalk.cyanBright("1.")} Open prefilled X post: ${urlLink(tweetUrl, "open X with the tweet pre-filled")}\n`)
         process.stdout.write(`${chalk.cyanBright("2.")} Attach the banner PNG above.\n`)
         process.stdout.write(`${chalk.cyanBright("3.")} Review, post, and ship it.\n\n`)
       })
