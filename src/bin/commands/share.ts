@@ -85,6 +85,15 @@ function safeSpawn(cmd: string, args: string[]): boolean {
   }
 }
 
+function isSafePath(filePath: string): boolean {
+  if (!filePath || filePath.length > 1024) return false
+  const forbidden = ["|", ";", "&", "$", "`", "\n", "\r"]
+  if (forbidden.some((ch) => filePath.includes(ch))) return false
+  const abs = isAbsolute(filePath) ? filePath : resolve(filePath)
+  const normalized = process.platform === "win32" ? normalize(abs) : abs
+  return normalized === abs
+}
+
 function normalizeForOs(filePath: string): string {
   const abs = isAbsolute(filePath) ? filePath : resolve(filePath)
   return process.platform === "win32" ? normalize(abs) : abs
@@ -95,6 +104,7 @@ function normalizeForOs(filePath: string): string {
  * silently if the opener isn't on PATH (CI, headless servers, etc).
  */
 export function openInOS(filePath: string): boolean {
+  if (!isSafePath(filePath)) return false
   const target = normalizeForOs(filePath)
   const spec = openCommandForPlatform(target)
   if (!spec) return false
@@ -108,6 +118,7 @@ export function openInOS(filePath: string): boolean {
  * via revealCommandForPlatform().note.
  */
 export function revealInOS(filePath: string): boolean {
+  if (!isSafePath(filePath)) return false
   const target = normalizeForOs(filePath)
   const spec = revealCommandForPlatform(target)
   if (!spec) return false
