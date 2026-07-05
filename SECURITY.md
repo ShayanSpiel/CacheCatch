@@ -11,7 +11,7 @@
 
 If you discover a security vulnerability, please follow these steps:
 
-1. **Do not open a public issue**. Instead, email the maintainer directly at `shayan@spielos.com`.
+1. **Do not open a public issue**. Instead, email the maintainer directly at `shayan@spielos.xyz`.
 2. Include a detailed description of the vulnerability, steps to reproduce, and any potential impact.
 3. Allow 48 hours for an initial response. We aim to resolve critical issues within 7 days.
 4. Coordinate disclosure with the maintainer before publicly sharing details.
