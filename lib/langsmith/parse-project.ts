@@ -7,7 +7,7 @@ export function parseProjectUrl(urlOrName: string): {
   const trimmed = urlOrName.trim()
   try {
     const url = new URL(trimmed)
-    if (url.hostname.includes("smith.langchain.com") || url.hostname.includes("langsmith")) {
+    if (url.hostname.endsWith(".langchain.com") || url.hostname === "smith.langchain.com" || url.hostname.endsWith(".langsmith.dev") || url.hostname.endsWith(".langsmith.internal.example.com")) {
       const pathParts = url.pathname.split("/")
       const pIndex = pathParts.indexOf("p")
       const projectsIndex = pathParts.indexOf("projects")

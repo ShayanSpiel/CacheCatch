@@ -73,7 +73,7 @@ function safeSpawn(cmd: string, args: string[]): boolean {
   if (!cmd) return false
   const stdio: StdioOptions = "ignore"
   try {
-    const child = spawn(cmd, args, { detached: true, stdio, windowsHide: true })
+    const child = spawn(cmd, args, { detached: true, stdio, windowsHide: true, shell: false })
     child.on("error", () => {
       // Swallow ENOENT/EPERM on shells without the opener; the share
       // command itself still succeeds because the PNG is already on disk.

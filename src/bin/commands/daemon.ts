@@ -82,9 +82,9 @@ function startDaemon(debugRaw: boolean): void {
       })
       res.writeHead(200, { "content-type": "application/json" })
       res.end('{"ok":true}\n')
-    } catch (e) {
+    } catch {
       res.writeHead(500, { "content-type": "application/json" })
-      res.end(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }))
+      res.end(JSON.stringify({ ok: false, error: "Internal server error" }))
     }
   })
   server.listen(PORT, HOST, () => {

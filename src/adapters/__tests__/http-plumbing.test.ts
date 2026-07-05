@@ -107,8 +107,9 @@ void (async () => {
   const selfHosted = new LangSmithClient("k", "https://langsmith.internal.example.com")
   globalThis.fetch = mockFetchOnce({ sessions: [] }) as typeof fetch
   await selfHosted.listProjects()
+  const requestUrl = new URL(lastRequest!.url)
   assert(
-    lastRequest!.url.startsWith("https://langsmith.internal.example.com"),
+    requestUrl.origin === "https://langsmith.internal.example.com",
     "LangSmithClient honors baseUrl override"
   )
 

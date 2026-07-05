@@ -92,7 +92,8 @@ console.log("\n\u001b[1mOffline-safe banner HTML\u001b[0m")
     <link href="https://fonts.googleapis.com/css2?family=Micro+5&display=swap" rel="stylesheet">
   </head><body></body></html>`
   const offline = inlineOfflineStyles(html)
-  assert(!offline.includes("fonts.googleapis.com"), "Offline bootstrap strips Google Fonts preconnect and stylesheet links")
+  const offlineUrl = new URL(offline, "http://localhost")
+  assert(!offlineUrl.href.includes("fonts.googleapis.com"), "Offline bootstrap strips Google Fonts preconnect and stylesheet links")
   assert(offline.includes("<style>") || offline.includes("font-display"), "Offline bootstrap injects a fallback style block")
 }
 
