@@ -1,5 +1,8 @@
 # Cachecatch
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13483/badge)](https://www.bestpractices.dev/projects/13483)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ShayanSpiel/CacheCatch/badge)](https://securityscorecards.dev/details/?github.com=ShayanSpiel/CacheCatch)
+
 **The first prompt-cache audit and optimization tool for AI agents.**
 
 1. Run audit → 2. Run share → 3. Post on 𝕏
