@@ -66,7 +66,8 @@ void (async () => {
   const projects = await lsClient.listProjects()
   assert(projects.length === 2, "listProjects returns 2 sessions")
   assert(
-    lastRequest!.url.includes("https://api.smith.langchain.com/api/v1/sessions"),
+    `${new URL(lastRequest!.url).origin}${new URL(lastRequest!.url).pathname}` ===
+      "https://api.smith.langchain.com/api/v1/sessions",
     "listProjects hits /api/v1/sessions"
   )
   assert(
