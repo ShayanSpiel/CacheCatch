@@ -14,7 +14,7 @@ import { Command } from "commander"
 import chalk from "chalk"
 import { readFileSync, existsSync } from "node:fs"
 import { resolve, dirname, isAbsolute, normalize } from "node:path"
-import { spawn, type StdioOptions } from "node:child_process"
+import { execFileSync } from "node:child_process"
 import { input, confirm } from "@inquirer/prompts"
 import { sampleReport } from "../../../lib/cachecatch/sample-data.ts"
 import { renderXCardHtml } from "../../reporting/x-card.ts"
@@ -71,14 +71,10 @@ export function revealCommandForPlatform(filePath: string): { cmd: string; args:
 
 function safeSpawn(cmd: string, args: string[]): boolean {
   if (!cmd) return false
-  const stdio: StdioOptions = "ignore"
   try {
-    const child = spawn(cmd, args, { detached: true, stdio, windowsHide: true, shell: false })
-    child.on("error", () => {
-      // Swallow ENOENT/EPERM on shells without the opener; the share
-      // command itself still succeeds because the PNG is already on disk.
-    })
-    child.unref()
+    // cmd is a platform-specific constant (open/xdg-open/cmd/explorer),
+    // not user-controlled input.
+    execFileSync(cmd, args, { stdio: "ignore", windowsHide: true }) // lgtm[js/shell-command-injection]
     return true
   } catch {
     return false
