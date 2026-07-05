@@ -109,6 +109,8 @@ export function renderXCardHtml(
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Micro+5&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+/* Offline-safe fallback so banner rendering never blocks on a remote font fetch. */
+@font-face{font-family:"CacheCatchMicro5Fallback";src:local("Micro 5"),local("Micro5"),local("JetBrains Mono"),local("Menlo"),local("Consolas"),local("monospace");font-display:swap;}
 :root{
   --bg:#050605;
   --ink:#f4f5f1;
@@ -206,7 +208,7 @@ html,body{
   width:100%;
   height:100%;
   place-items:center;
-  font-family:"Micro 5";
+  font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:64px;
   color:var(--green);
 }
@@ -289,7 +291,7 @@ html,body{
   margin-bottom:14px;
 }
 .score{
-  font-family:"Micro 5";
+  font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:88px;
   line-height:.78;
   color:#fff;
@@ -353,7 +355,7 @@ html,body{
 }
 .slab-inner{position:relative;z-index:1}
 .slab-label{
-  font-family:"Micro 5";
+  font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:29px;
   color:var(--green);
   letter-spacing:.08em;
@@ -362,7 +364,7 @@ html,body{
 }
 .amount{
   margin-top:16px;
-  font-family:"Micro 5";
+  font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:82px;
   line-height:.76;
   letter-spacing:.04em;
@@ -456,7 +458,7 @@ html,body{
   border-left:1px solid rgba(116,245,154,.35);
 }
 .matter-big{
-  font-family:"Micro 5";
+  font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   color:var(--green);
   font-size:54px;
   line-height:.78;
@@ -488,14 +490,14 @@ html,body{
   width:38px;
   height:38px;
   color:var(--green);
-  font-family:"Micro 5";
+  font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:40px;
   display:grid;
   place-items:center;
   line-height:1;
 }
 .brand-name{
-  font-family:"Micro 5";
+  font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:40px;
   line-height:.8;
   letter-spacing:.05em;

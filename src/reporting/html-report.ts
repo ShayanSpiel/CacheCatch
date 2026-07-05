@@ -234,6 +234,74 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: upp
     )
     .join("\n")}
 
+  ${report.rebuilds && report.rebuilds.length > 0 ? `<h2>Per-Route Prompt Rebuild</h2>
+  <p class="muted">Concrete, route-specific rebuild plans derived from the actual divergence position in your prompts. Each block shows what to move, the cache contract for the model, and an example diff from two comparable traces (when available).</p>
+  ${report.rebuilds
+    .map(
+      (rebuild, i) => {
+        const advice = report.advice?.[i]
+        return `<div class="card" style="margin-top: 12px;">
+    <h3 style="margin-bottom: 4px;">${escape(rebuild.route)}</h3>
+    ${advice ? `<p class="muted" style="margin: 0 0 12px;">${escape(advice.oneLiner)}</p>` : ""}
+    <div class="grid">
+      <div class="box">
+        <div class="head">Move these to the dynamic tail</div>
+        ${
+          rebuild.fieldsToMoveDown.length === 0
+            ? `<div class="line muted">No dynamic fields detected in the stable prefix.</div>`
+            : rebuild.fieldsToMoveDown
+                .map(
+                  (f) => `<div class="line">— <code>${escape(f.firstSeen)}</code> <span class="muted">at char ${f.currentChar}</span></div>`
+                )
+                .join("\n        ")
+        }
+      </div>
+      <div class="box">
+        <div class="head">Stable header (render first, byte-stable)</div>
+        ${rebuild.stableHeader
+          .map((h) => `<div class="line cached">${escape(h)} 🔒</div>`)
+          .join("\n        ")}
+        ${
+          rebuild.cacheContractNote
+            ? `<div class="line" style="margin-top: 8px;"><strong>Cache contract:</strong> ${escape(rebuild.cacheContractNote)}</div>`
+            : ""
+        }
+      </div>
+    </div>
+    ${
+      rebuild.exampleDiff
+        ? `<div class="grid" style="margin-top: 12px;">
+        <div class="box">
+          <div class="head">Before — ${escape(rebuild.exampleDiff.from.traceId)} at char ${rebuild.exampleDiff.from.char}</div>
+          <div class="line"><code>${escape(rebuild.exampleDiff.from.slice)}</code></div>
+        </div>
+        <div class="box">
+          <div class="head">After — ${escape(rebuild.exampleDiff.to.traceId)} at char ${rebuild.exampleDiff.to.char}</div>
+          <div class="line"><code>${escape(rebuild.exampleDiff.to.slice)}</code></div>
+        </div>
+      </div>`
+        : ""
+    }
+    ${
+      advice
+        ? `<div class="box" style="margin-top: 12px;">
+        <div class="head">Agent Repair Instruction (paste as-is)</div>
+        ${advice.agentInstruction
+          .split("\n")
+          .map((line) => `<div class="line">${escape(line)}</div>`)
+          .join("\n        ")}
+      </div>
+      <div class="row" style="margin-top: 8px;">
+        ${rebuild.expectedMonthlySavingsUsd !== null ? `<span class="tag">Recoverable: $${rebuild.expectedMonthlySavingsUsd.toFixed(0)}/mo</span>` : ""}
+        <span class="tag">Expected post-fix cache-read: ${Math.round(rebuild.expectedCacheReadRateAfterFix * 100)}%</span>
+      </div>`
+        : ""
+    }
+  </div>`
+      }
+    )
+    .join("\n")}` : ""}
+
   <h2>Fix Plan</h2>
   ${
     report.fixPlan.length === 0

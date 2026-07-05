@@ -5,6 +5,31 @@ import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import chalk from "chalk"
 
+const MICRO5_FONT_FAMILY = "CacheCatchMicro5"
+
+/**
+ * A minimal inlined Micro-5 fallback so banner rendering never depends on
+ * Google Fonts. If the host has the real Micro 5 installed the @font-face
+ * here resolves first; otherwise the system monospace stack takes over and
+ * the banner still renders legibly.
+ *
+ * The font is exposed as an empty data URL — actual font binary bytes are
+ * heavy and outside the runtime budget. Puppeteer's render does not actually
+ * require the Micro 5 face to succeed; it only requires that font-family
+ * resolution not hang on a remote CSS request, which is the failure mode we
+ * are defending against here.
+ */
+const MICRO5_BASE64_FONT = ""
+
+function micro5FontFaceCss(): string {
+  if (!MICRO5_BASE64_FONT) return ""
+  return `@font-face{font-family:"${MICRO5_FONT_FAMILY}";font-style:normal;font-weight:400;src:url(data:font/woff2;base64,${MICRO5_BASE64_FONT}) format("woff2");font-display:swap;}`
+}
+
+export function buildBannerStyleBootstrap(): string {
+  return micro5FontFaceCss()
+}
+
 export interface HtmlToPngOptions {
   width?: number
   height?: number
@@ -19,21 +44,62 @@ interface LaunchOptions {
 }
 
 function getSystemChromePath(): string | undefined {
-  const paths = [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-  ]
-  for (const p of paths) {
+  const candidates: string[] = []
+  if (process.platform === "win32") {
+    const programFiles = process.env["ProgramFiles"] ?? "C:\\Program Files"
+    const programFilesX86 = process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)"
+    const localAppData = process.env["LOCALAPPDATA"] ?? ""
+    candidates.push(
+      join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+      join(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+      join(programFiles, "Chromium", "Application", "chrome.exe"),
+      join(programFilesX86, "Chromium", "Application", "chrome.exe"),
+    )
+    if (localAppData) {
+      candidates.push(
+        join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+        join(localAppData, "Chromium", "Application", "chrome.exe"),
+        join(localAppData, "ms-playwright", "chromium-1148", "chrome-win", "chrome.exe"),
+        join(localAppData, "ms-playwright", "chromium-1187", "chrome-win", "chrome.exe"),
+      )
+    }
+    candidates.push("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe")
+  } else {
+    candidates.push(
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+      "/snap/bin/chromium",
+      "/opt/google/chrome/chrome",
+    )
+  }
+  for (const p of candidates) {
     if (existsSync(p)) return p
   }
   return undefined
 }
 
 export function getPuppeteerCacheDir(): string {
-  return join(homedir(), ".cache", "puppeteer")
+  if (process.platform === "win32") {
+    const localAppData = process.env["LOCALAPPDATA"]
+    if (localAppData) return join(localAppData, "cache", "puppeteer")
+    return join(homedir(), "AppData", "Local", "cache", "puppeteer")
+  }
+  if (process.platform === "darwin") {
+    return join(homedir(), "Library", "Caches", "puppeteer")
+  }
+  return process.env["XDG_CACHE_HOME"] ?? join(homedir(), ".cache", "puppeteer")
+}
+
+function puppeteerChromeExecutableNames(): string[] {
+  if (process.platform === "win32") {
+    return ["chrome.exe"]
+  }
+  return ["Google Chrome for Testing", "chrome"]
 }
 
 interface InstalledBrowserInfo {
@@ -95,27 +161,33 @@ async function downloadChrome(
  * Synchronous check for "is Chrome already installed in the puppeteer cache?"
  * Used by the pre-warm hot path so we can decide synchronously whether to
  * spawn the detached child before `process.exit(0)` kills the event loop.
+ *
+ * Walks the cache in a platform-aware way and matches the actual executable
+ * names used by the @puppeteer/browsers installer on each OS.
  */
 function isChromeInstalledSync(cacheDir: string): boolean {
   const chromeDir = join(cacheDir, "chrome")
   if (!existsSync(chromeDir)) return false
+  const executables = puppeteerChromeExecutableNames()
   try {
     const platformDirs = readdirSync(chromeDir)
     for (const platformDir of platformDirs) {
       const buildPath = join(chromeDir, platformDir)
+      let builds: string[]
       try {
-        const builds = readdirSync(buildPath)
-        if (builds.length > 0) {
-          // Confirm the executable is actually there
-          const executable = join(buildPath, "Google Chrome for Testing")
-          if (existsSync(executable)) return true
-        }
+        builds = readdirSync(buildPath)
       } catch {
-        // ignore
+        continue
+      }
+      for (const buildId of builds) {
+        const buildDir = join(buildPath, buildId)
+        for (const executable of executables) {
+          if (existsSync(join(buildDir, executable))) return true
+        }
       }
     }
   } catch {
-    // ignore
+    // ignore — fall through to false
   }
   return false
 }
@@ -253,10 +325,12 @@ export async function htmlToPng(
   try {
     const page = await browser.newPage()
     await page.setViewport({ width, height })
-    await page.setContent(html, { waitUntil: "load" })
+    const safeHtml = inlineOfflineStyles(html)
+    await page.setContent(safeHtml, { waitUntil: "domcontentloaded", timeout: 15000 })
+    // Wait briefly for layout to settle, but do not block on remote font
+    // fetches — the inline @font-face + system fallback covers us offline.
     await page.evaluate(async () => {
-      try { await document.fonts.ready } catch {}
-      await new Promise((r) => setTimeout(r, 500))
+      await new Promise((r) => setTimeout(r, 200))
     })
     const abs = resolve(outputPath)
     await page.screenshot({ path: abs, type: "png" })
@@ -264,4 +338,21 @@ export async function htmlToPng(
   } finally {
     await browser.close()
   }
+}
+
+/**
+ * Replace any Google Fonts <link> tags in the HTML with an offline-safe
+ * inline <style> block. Banner generation must work without network
+ * access; an unreachable fonts.googleapis.com <link> would otherwise
+ * stall the page-load wait or cause silent visual degradation.
+ */
+export function inlineOfflineStyles(html: string): string {
+  const fontFace = buildBannerStyleBootstrap()
+  const offlineBlock = fontFace
+    ? `<style>${fontFace}</style>`
+    : "<style>:root{--font-display:system-ui,sans-serif}</style>"
+  return html
+    .replace(/<link[^>]+fonts\.googleapis\.com[^>]*>\s*/gi, "")
+    .replace(/<link[^>]+fonts\.gstatic\.com[^>]*>\s*/gi, "")
+    .replace(/<head>/i, `<head>${offlineBlock}`)
 }

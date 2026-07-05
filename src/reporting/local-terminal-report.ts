@@ -372,16 +372,45 @@ function rankedFindings(report: LocalAgentReport): LocalAgentReport["findings"] 
 }
 
 function projectNextAction(project: LocalAgentReport["projects"][number]): string {
-  if (!project.hasAgentsMd) {
-    return `Add AGENTS.md to this repo. ${fmtInt(project.sessions)} sessions repeated project context without a stable instruction file.`
+  // Prefer the route-specific advice from `src/engine/advice.ts`; fall
+  // back to a single-line summary if the report was built before
+  // the new `fixAdvice` field shipped.
+  if (project.fixAdvice?.oneLiner) {
+    return project.fixAdvice.oneLiner
+  }
+  if (project.agentsMdStatus === "missing") {
+    return `Add AGENTS.md to this repo. ${fmtInt(project.sessions)} sessions used this project without a stable instruction file.`
+  }
+  if (project.agentsMdStatus === "weak") {
+    return `Expand AGENTS.md in this repo with stable commands, architecture boundaries, and testing expectations. ${fmtInt(project.sessions)} sessions will reuse the same prefix.`
   }
   if (project.cacheReadPercent !== null && project.cacheReadPercent < 0.35) {
     return `Move logs, diffs, and terminal output below stable instructions. Observed cache read is only ${fmtPct(project.cacheReadPercent)} for this project.`
   }
-  if (!project.hasClaudeMd) {
+  if (project.claudeMdStatus === "missing") {
     return `If Claude Code is used here, add CLAUDE.md or point it to AGENTS.md so these ${fmtInt(project.sessions)} sessions share stable repo rules.`
   }
+  if (project.claudeMdStatus === "weak") {
+    return `If Claude Code is used here, expand CLAUDE.md or have it delegate to AGENTS.md so ${fmtInt(project.sessions)} sessions inherit the same stable repo rules.`
+  }
+  if (project.agentsMdStatus === "unknown" || project.claudeMdStatus === "unknown") {
+    return `Cachecatch could not read AGENTS.md/CLAUDE.md for this project. Verify the path and rerun if you want per-file advice.`
+  }
   return `Keep AGENTS.md/CLAUDE.md stable and move current-task state to the tail before the next ${fmtInt(project.sessions)}-session run.`
+}
+
+function agentsMdLabel(status: LocalAgentReport["projects"][number]["agentsMdStatus"]): { value: string; note: string } {
+  if (status === "missing") return { value: "missing", note: "add stable repo rules" }
+  if (status === "weak") return { value: "weak", note: "expand to carry stable repo rules" }
+  if (status === "present") return { value: "present", note: "keep stable" }
+  return { value: "unknown", note: "path not readable; rerun from the repo" }
+}
+
+function claudeMdLabel(status: LocalAgentReport["projects"][number]["claudeMdStatus"]): { value: string; note: string } {
+  if (status === "missing") return { value: "missing", note: "optional unless Claude Code is used here" }
+  if (status === "weak") return { value: "weak", note: "expand or point to AGENTS.md" }
+  if (status === "present") return { value: "present", note: "Claude-specific rules available" }
+  return { value: "unknown", note: "path not readable; rerun from the repo" }
 }
 
 export function renderLocalAgentTerminalReport(
@@ -504,12 +533,14 @@ export function renderLocalAgentTerminalReport(
     lines.push(chalk.gray("  Project advice is based on the local project folders found in agent storage, plus AGENTS.md / CLAUDE.md presence."))
     for (const project of report.projects.slice(0, 3)) {
       lines.push("")
+      const agentsLabel = agentsMdLabel(project.agentsMdStatus)
+      const claudeLabel = claudeMdLabel(project.claudeMdStatus)
       lines.push(miniBox(project.path, [
         metric("Sessions", fmtInt(project.sessions), undefined, 18),
         metric("Token activity", fmtInt(project.totalTokens), undefined, 18),
         metric("Cache read", fmtPct(project.cacheReadPercent), project.cacheReadPercent === null ? "not reported" : "observed", 18),
-        metric("AGENTS.md", project.hasAgentsMd ? "present" : "missing", project.hasAgentsMd ? "keep stable" : "add stable repo rules", 18),
-        metric("CLAUDE.md", project.hasClaudeMd ? "present" : "missing", project.hasClaudeMd ? "Claude-specific rules available" : "optional unless Claude Code is used here", 18),
+        metric("AGENTS.md", agentsLabel.value, agentsLabel.note, 18),
+        metric("CLAUDE.md", claudeLabel.value, claudeLabel.note, 18),
         `${chalk.cyanBright("→")} ${projectNextAction(project)}`,
       ], project.cacheReadPercent !== null && project.cacheReadPercent >= 0.35 ? "green" : "yellow"))
     }

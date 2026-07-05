@@ -331,5 +331,384 @@ try {
   else process.env.CACHECATCH_TEST_HOME = oldHome
 }
 
+console.log("\n\u001b[2mlocal-agent project attribution\u001b[0m")
+{
+  const oldHome2 = process.env.CACHECATCH_TEST_HOME
+  const home = mkdtempSync(join(tmpdir(), "cachecatch-local-attr-"))
+  const originalCwd = process.cwd()
+  try {
+    process.env.CACHECATCH_TEST_HOME = home
+
+    const projectRepo = join(home, "work", "docs-rag")
+    mkdirSync(projectRepo, { recursive: true })
+    writeFileSync(
+      join(projectRepo, "AGENTS.md"),
+      "# Agent Instructions\n\n## Project Rules\n- Keep analysis in src/engine.\n- Provider I/O stays in src/adapters.\n\n## Commands\n- npm run typecheck\n- npm test\n",
+      "utf-8"
+    )
+
+    const codexDir = join(home, ".codex", "sessions")
+    mkdirSync(codexDir, { recursive: true })
+    writeFileSync(
+      join(codexDir, "session.jsonl"),
+      [
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "token_count", token_count: { input_tokens: 100, cached_input: 30, output_tokens: 10 }, turn_context: { model: "gpt-5-codex" }, cwd: projectRepo },
+          session_id: "p1",
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "token_count", token_count: { input_tokens: 200, cached_input: 60, output_tokens: 20 }, turn_context: { model: "gpt-5-codex" }, cwd: projectRepo },
+          session_id: "p1",
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "token_count", token_count: { input_tokens: 50, cached_input: 10, output_tokens: 5 }, turn_context: { model: "gpt-5-codex" }, cwd: projectRepo },
+          session_id: "p1",
+        }),
+      ].join("\n"),
+      "utf-8"
+    )
+
+    // Force process.cwd() to a totally different repo to prove the report
+    // does not anchor markdown advice to the shell directory.
+    const unrelatedRepo = join(home, "work", "unrelated")
+    mkdirSync(unrelatedRepo, { recursive: true })
+    process.chdir(unrelatedRepo)
+
+    const report = buildLocalAgentAudit({ window: "1y", now: new Date(), redact: true })
+    const docsProject = report.projects.find((p) => p.path === projectRepo)
+    assert(docsProject !== undefined, "Codex session cwd is attributed to its actual project path")
+    assert(docsProject?.sessions === 1, "Project sessions counts match the unique session_id")
+    assert(docsProject?.agentsMdStatus === "present", "AGENTS.md present in the actual project is reported as present, not missing")
+    assert(
+      !report.findings.some((finding) => finding.id === "weak-agents-md" && finding.evidence.toLowerCase().includes("missing")),
+      "Report does not falsely claim AGENTS.md is missing in the project that has it"
+    )
+    assert(
+      report.findings.some((finding) => finding.id === "weak-agents-md" && finding.evidence.toLowerCase().includes("thin")) === false,
+      "Healthy AGENTS.md is not classified as weak"
+    )
+  } finally {
+    process.chdir(originalCwd)
+    if (oldHome2 === undefined) delete process.env.CACHECATCH_TEST_HOME
+    else process.env.CACHECATCH_TEST_HOME = oldHome2
+    rmSync(home, { recursive: true, force: true })
+  }
+}
+
+console.log("\n\u001b[2mlocal-agent weak markdown detection\u001b[0m")
+{
+  const oldHome3 = process.env.CACHECATCH_TEST_HOME
+  const home = mkdtempSync(join(tmpdir(), "cachecatch-local-weak-"))
+  try {
+    process.env.CACHECATCH_TEST_HOME = home
+    const projectRepo = join(home, "work", "thin-rules")
+    mkdirSync(projectRepo, { recursive: true })
+    writeFileSync(join(projectRepo, "AGENTS.md"), "# notes\ntodo later\n", "utf-8")
+
+    const codexDir = join(home, ".codex", "sessions")
+    mkdirSync(codexDir, { recursive: true })
+    writeFileSync(
+      join(codexDir, "session.jsonl"),
+      JSON.stringify({
+        type: "event_msg",
+        payload: { type: "token_count", token_count: { input_tokens: 100, cached_input: 10, output_tokens: 5 }, turn_context: { model: "gpt-5-codex" }, cwd: projectRepo },
+        session_id: "thin",
+      }),
+      "utf-8"
+    )
+
+    const report = buildLocalAgentAudit({ window: "1y", now: new Date(), redact: true })
+    const thinProject = report.projects.find((p) => p.path === projectRepo)
+    assert(thinProject?.agentsMdStatus === "weak", "Present-but-thin AGENTS.md is correctly classified as weak, not missing")
+    const finding = report.findings.find((f) => f.id === "weak-agents-md")
+    assert(Boolean(finding && finding.evidence.toLowerCase().includes("thin")), "Weak AGENTS.md finding names the affected project with project-aware evidence")
+  } finally {
+    if (oldHome3 === undefined) delete process.env.CACHECATCH_TEST_HOME
+    else process.env.CACHECATCH_TEST_HOME = oldHome3
+    rmSync(home, { recursive: true, force: true })
+  }
+}
+
+console.log("\n\u001b[2mlocal-agent project ranking merge\u001b[0m")
+{
+  const oldHome4 = process.env.CACHECATCH_TEST_HOME
+  const home = mkdtempSync(join(tmpdir(), "cachecatch-local-rank-"))
+  try {
+    process.env.CACHECATCH_TEST_HOME = home
+    const bigProject = join(home, "work", "big")
+    const smallProject = join(home, "work", "small")
+    mkdirSync(bigProject, { recursive: true })
+    mkdirSync(smallProject, { recursive: true })
+
+    const codexDir = join(home, ".codex", "sessions")
+    mkdirSync(codexDir, { recursive: true })
+    writeFileSync(
+      join(codexDir, "big.jsonl"),
+      [
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "token_count", token_count: { input_tokens: 100, cached_input: 30, output_tokens: 10 }, turn_context: { model: "gpt-5-codex" }, cwd: bigProject },
+          session_id: "big-1",
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "token_count", token_count: { input_tokens: 200, cached_input: 60, output_tokens: 20 }, turn_context: { model: "gpt-5-codex" }, cwd: bigProject },
+          session_id: "big-1",
+        }),
+      ].join("\n"),
+      "utf-8"
+    )
+    writeFileSync(
+      join(codexDir, "small.jsonl"),
+      JSON.stringify({
+        type: "event_msg",
+        payload: { type: "token_count", token_count: { input_tokens: 30, cached_input: 5, output_tokens: 2 }, turn_context: { model: "gpt-5-codex" }, cwd: smallProject },
+        session_id: "small-1",
+      }),
+      "utf-8"
+    )
+
+    const report = buildLocalAgentAudit({ window: "1y", now: new Date(), redact: true })
+    const rankedPaths = report.projects.map((project) => project.path)
+    assert(rankedPaths[0] === bigProject, "Top-ranked project is the one with the most sessions, regardless of cwd")
+    assert(rankedPaths.includes(smallProject), "Lower-traffic project still appears in the ranking")
+    assert(report.projects.length === 2, "Project ranking is not bloated by the unrelated cwd repo")
+  } finally {
+    if (oldHome4 === undefined) delete process.env.CACHECATCH_TEST_HOME
+    else process.env.CACHECATCH_TEST_HOME = oldHome4
+    rmSync(home, { recursive: true, force: true })
+  }
+}
+
+console.log("\n\u001b[2mlocal-agent Claude storage layout attribution\u001b[0m")
+{
+  const oldHome5 = process.env.CACHECATCH_TEST_HOME
+  const home = mkdtempSync(join(tmpdir(), "cachecatch-local-claude-attr-"))
+  try {
+    process.env.CACHECATCH_TEST_HOME = home
+    const bucketProject = join(home, "work", "claude-repo")
+    const bucket = join(home, ".claude", "projects", bucketProject)
+    mkdirSync(bucket, { recursive: true })
+    writeFileSync(join(bucket, "session.jsonl"), JSON.stringify({ message: { content: "hello" } }), "utf-8")
+
+    const report = buildLocalAgentAudit({ window: "1y", now: new Date(), redact: true })
+    const claude = report.agents.find((agent) => agent.provider === "claude-code")
+    const project = report.projects.find((p) => p.path === bucket)
+    assert(claude !== undefined, "Claude Code agent is detected from storage layout")
+    assert(project !== undefined, "Claude storage bucket is mapped to a stable project identifier under ~/.claude/projects/")
+    assert(project?.sessions === 1, "Claude storage bucket records the right session count")
+  } finally {
+    if (oldHome5 === undefined) delete process.env.CACHECATCH_TEST_HOME
+    else process.env.CACHECATCH_TEST_HOME = oldHome5
+    rmSync(home, { recursive: true, force: true })
+  }
+}
+
+console.log("\n\u001b[2mlayer 1 — pricing registry\u001b[0m")
+import { pricingForModel, isHighConfidencePrice } from "../pricing.ts"
+const sonnetPrice = pricingForModel("claude-sonnet-4-5-20250929")
+assert(sonnetPrice !== undefined, "pricingForModel resolves claude-sonnet-4-5-20250929")
+assert(
+  typeof sonnetPrice?.inputUsdPerMTok === "number" && sonnetPrice.inputUsdPerMTok > 0,
+  "claude-sonnet-4-5 has an inputUsdPerMTok"
+)
+assert(
+  typeof sonnetPrice?.cachedInputUsdPerMTok === "number" && sonnetPrice.cachedInputUsdPerMTok > 0,
+  "claude-sonnet-4-5 has a cachedInputUsdPerMTok (this is the column that was missing before)"
+)
+assert(isHighConfidencePrice(sonnetPrice), "claude-sonnet-4-5 is an official, high-confidence price")
+const gpt5 = pricingForModel("gpt-5-codex")
+assert(gpt5?.cacheContract?.keyField === "prompt_cache_key", "OpenAI cache contract names the prompt_cache_key field")
+const gemini = pricingForModel("gemini-2.5-flash")
+assert(gemini?.cacheContract?.minPrefixTokens === 1024, "Google cache contract enforces 1024-token minimum")
+const unknown = pricingForModel("totally-unknown-model-9999")
+assert(unknown === undefined, "Unknown model resolves to undefined")
+
+console.log("\n\u001b[2mlayer 2 — route rebuild\u001b[0m")
+const report1B = buildReport([makeTrace(), makeTrace({ traceId: "t-2" })], {
+  projectName: "Test",
+  window: "7d",
+  source: "mock",
+})
+const cleanRoute = report1B.routes[0]
+const cleanRebuild = report1B.rebuilds?.[0]
+assert(cleanRebuild !== undefined, "buildReport attaches a RoutePromptRebuild to every route")
+assert(cleanRebuild!.fieldsToMoveDown.length === 0, "Clean route produces no fieldsToMoveDown")
+assert(
+  cleanRebuild!.expectedCacheReadRateAfterFix >= (cleanRoute.observedCacheReadRate ?? 0),
+  "expectedCacheReadRateAfterFix is at least the current rate"
+)
+assert(
+  cleanRebuild!.expectedCacheReadRateAfterFix <= 0.95,
+  "expectedCacheReadRateAfterFix is clamped to 0.95"
+)
+
+const tWithUuid2 = makeTrace({
+  route: "chat.alpha",
+  model: "claude-sonnet-4-5",
+  metrics: { totalInputTokens: 8000, totalOutputTokens: 100, cacheReadTokens: 200, cacheCreationTokens: 0, costUsd: 0, estimatedWasteUsd: 0 },
+  promptText: "system\n\nuser_id: 7f3c8a2e-1234-1234-1234-aaaaaaaaaaaa\nQuestion?",
+})
+const tWithUuid2b = makeTrace({
+  traceId: "t-2b",
+  route: "chat.alpha",
+  model: "claude-sonnet-4-5",
+  metrics: { totalInputTokens: 8000, totalOutputTokens: 100, cacheReadTokens: 200, cacheCreationTokens: 0, costUsd: 0, estimatedWasteUsd: 0 },
+  promptText: "system\n\nuser_id: 9a1b2c3d-4567-4567-4567-bbbbbbbbbbbb\nQuestion?",
+})
+const report1C = buildReport([tWithUuid2, tWithUuid2b], {
+  projectName: "Chat Alpha",
+  window: "7d",
+  source: "langsmith",
+})
+const chatRoute = report1C.routes[0]
+const chatRebuild = report1C.rebuilds?.[0]
+assert(chatRebuild !== undefined, "Rebuild is attached for the chat route")
+assert(chatRebuild!.fieldsToMoveDown.length > 0, "Rebuild detects the user_id field to move down")
+assert(chatRebuild!.cacheContractNote !== null, "Rebuild carries the cache contract note for claude-sonnet-4-5")
+assert(chatRebuild!.exampleDiff !== null, "Rebuild computes an example diff from 2+ comparable traces")
+assert(chatRoute.model === "claude-sonnet-4-5", "Route model is preserved for the rebuild")
+
+console.log("\n\u001b[2mlayer 3 — dynamic advice\u001b[0m")
+import { adviceForLocalProject } from "../advice.ts"
+const report1D = buildReport(
+  [
+    makeTrace({ route: "alpha", model: "claude-sonnet-4-5", promptText: "stable prefix\nuser_id: 7f3c8a2e-1234-1234-1234-aaaaaaaaaaaa" }),
+    makeTrace({ route: "alpha", traceId: "t2", model: "claude-sonnet-4-5", promptText: "stable prefix\nuser_id: 9a1b2c3d-4567-4567-4567-bbbbbbbbbbbb" }),
+    makeTrace({ route: "beta", model: "claude-sonnet-4-5", promptText: "stable prefix\ncustomer_id: cus_8f2kj3lx\nQ?" }),
+    makeTrace({ route: "beta", traceId: "t3", model: "claude-sonnet-4-5", promptText: "stable prefix\ncustomer_id: cus_77qq0abc\nQ?" }),
+  ],
+  { projectName: "Multi-route", window: "7d", source: "langsmith" }
+)
+const alphaAdvice = report1D.advice?.[0]
+const betaAdvice = report1D.advice?.[1]
+assert(alphaAdvice !== undefined && betaAdvice !== undefined, "advice generated for every route")
+assert(
+  alphaAdvice!.oneLiner !== betaAdvice!.oneLiner || alphaAdvice!.whatToChange[0] !== betaAdvice!.whatToChange[0],
+  "Same breaker type on two routes produces different advice (no more static one-liner)"
+)
+assert(
+  alphaAdvice!.agentInstruction.includes("claude-sonnet-4-5"),
+  "adviceForRoute names the model in the agent instruction"
+)
+assert(
+  alphaAdvice!.agentInstruction.includes("stable_prefix") && alphaAdvice!.agentInstruction.includes("dynamic_tail"),
+  "adviceForRoute emits the stable_prefix/dynamic_tail structure"
+)
+assert(
+  alphaAdvice!.validation.command.includes("cachecatch"),
+  "adviceForRoute validation.command references cachecatch"
+)
+const localAdvice = adviceForLocalProject({
+  projectPath: "/work/some-app",
+  agentsMdStatus: "missing",
+  claudeMdStatus: "missing",
+  cacheReadPercent: null,
+  sessions: 24,
+})
+assert(
+  localAdvice.oneLiner.includes("24") && localAdvice.sourceLocation === "/work/some-app",
+  "adviceForLocalProject names the session count and project path"
+)
+
+console.log("\n\u001b[2mlayer 5 — validateReport\u001b[0m")
+import { validateReport } from "../validate-report.ts"
+import type { CachecatchReport } from "../../types/index.ts"
+const synthetic: CachecatchReport = {
+  id: "r-1",
+  createdAt: new Date().toISOString(),
+  source: "mock",
+  projectName: "X",
+  window: "7d",
+  score: 50,
+  confidence: "high",
+  summary: {
+    runsAnalyzed: 1,
+    routesAnalyzed: 1,
+    observedCacheReadTokens: 0,
+    observedCacheCreationTokens: 0,
+    observedInputTokens: 100,
+    observedOutputTokens: 50,
+    observedCacheReadRate: null,
+    estimatedReusableTokensAfterDivergence: 0,
+    estimatedCacheOpportunityTokens: 0,
+    estimatedMonthlyWasteUsd: 500,
+    topBreaker: "x",
+  },
+  routes: [
+    {
+      route: "a",
+      runsAnalyzed: 1,
+      observedInputTokens: 100,
+      observedCacheReadTokens: 0,
+      observedCacheCreationTokens: 0,
+      observedCacheReadRate: null,
+      estimatedReusableTokensAfterDivergence: 0,
+      estimatedCacheOpportunityTokens: 0,
+      estimatedMonthlyWasteUsd: 999, // intentionally mismatched
+      avgInputTokens: 100,
+      avgFirstDivergenceToken: 0,
+      findings: [],
+    },
+  ],
+  findings: [],
+  recommendedLayout: { stablePrefix: [], dynamicTail: [] },
+  fixPlan: [],
+  dataQuality: {
+    hasRenderedPrompts: true,
+    hasTokenUsage: true,
+    hasCacheReadTelemetry: true,
+    hasCacheCreationTelemetry: true,
+    hasProviderMetadata: true,
+    hasModelMetadata: true,
+    comparableRunGroups: 1,
+    warnings: [],
+    confidenceReasons: [],
+  },
+  rebuilds: [
+    {
+      route: "a",
+      stableHeader: ["## System"],
+      fieldsToMoveDown: [],
+      fieldsToSort: [],
+      exampleDiff: null,
+      reusableTokensAfterFix: 0,
+      expectedCacheReadRateAfterFix: 0.7,
+      expectedMonthlySavingsUsd: null,
+      cacheContractNote: null,
+    },
+  ],
+  advice: [],
+  details: {
+    reportMode: "financial_cache_audit",
+    pricingConfidence: "high",
+    recoverableDeltaPerMillion: 1.25,
+    blendedUncachedInputCostPerMillion: 2.5,
+    blendedCachedReadCostPerMillion: 1.25,
+    monthlyRecoverableCacheLossPrecise: 500,
+    monthlyRecoverableCacheLossFormula: "= $999.99", // intentionally wrong
+  },
+}
+const warnings = validateReport(synthetic)
+assert(warnings.some((w) => w.includes("does not equal summary.estimatedMonthlyWasteUsd")), "validateReport flags per-route loss mismatches")
+assert(warnings.some((w) => w.includes("evaluates to")), "validateReport flags formula/precise mismatches")
+const good = buildReport(
+  [makeTrace(), makeTrace({ traceId: "t-2" })],
+  { projectName: "Good", window: "7d", source: "mock" }
+)
+const goodWarnings = validateReport(good)
+assert(goodWarnings.length === 0 || goodWarnings.every((w) => w.includes("warnings:") || w.length < 200), "validateReport produces no spurious warnings on a clean report")
+const validHigh = buildReport(
+  [
+    makeTrace({ model: "claude-sonnet-4-5", promptText: "stable prefix" }),
+    makeTrace({ model: "claude-sonnet-4-5", traceId: "t-2", promptText: "stable prefix" }),
+  ],
+  { projectName: "Sonnet", window: "7d", source: "langsmith" }
+)
+assert(validHigh.details?.reportMode === "financial_cache_audit", "buildReport returns financial_cache_audit when the model is officially priced")
+
 console.log(`\n\u001b[1m${pass} passed, ${fail} failed\u001b[0m\n`)
 process.exit(fail > 0 ? 1 : 0)

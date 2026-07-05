@@ -52,6 +52,50 @@ function stripAnsi(text: string): string {
   return text.replace(/\u001b\[[0-9;]*m/g, "")
 }
 
+console.log("\n\u001b[1mShare portability helpers\u001b[0m")
+{
+  const { openCommandForPlatform, revealCommandForPlatform } = await import("../commands/share.ts")
+  const originalPlatform = process.platform
+  try {
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true })
+    const openMac = openCommandForPlatform("/tmp/foo.png")
+    assert(openMac?.cmd === "open" && openMac.args[0] === "/tmp/foo.png", "open command on macOS is `open <path>`")
+    const revealMac = revealCommandForPlatform("/tmp/foo.png")
+    assert(revealMac?.cmd === "open" && revealMac.args[0] === "-R" && revealMac.args[1] === "/tmp/foo.png", "reveal command on macOS is `open -R <path>`")
+
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true })
+    const openWin = openCommandForPlatform("C:\\tmp\\foo.png")
+    assert(openWin?.cmd === "cmd" && openWin.args[0] === "/c" && openWin.args[1] === "start", "open command on Windows uses `cmd /c start`")
+    assert(openWin?.args[2] === "" && openWin?.args[3] === "C:\\tmp\\foo.png", "Windows open passes an empty title and then the path")
+    const revealWin = revealCommandForPlatform("C:\\tmp\\foo.png")
+    assert(revealWin?.cmd === "explorer" && revealWin?.args[0] === "/select,C:\\tmp\\foo.png", "Windows reveal uses `explorer /select,<path>` with no space after the comma")
+
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true })
+    const openLinux = openCommandForPlatform("/tmp/foo.png")
+    assert(openLinux?.cmd === "xdg-open" && openLinux.args[0] === "/tmp/foo.png", "open command on Linux is `xdg-open <path>`")
+    const revealLinux = revealCommandForPlatform("/tmp/foo.png")
+    assert(revealLinux?.cmd === "xdg-open" && Boolean(revealLinux.note?.includes("parent")), "Linux reveal notes the parent-directory fallback")
+
+    const empty = openCommandForPlatform("")
+    assert(empty === null, "Empty paths produce no spawn command on any platform")
+  } finally {
+    Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true })
+  }
+}
+
+console.log("\n\u001b[1mOffline-safe banner HTML\u001b[0m")
+{
+  const { inlineOfflineStyles } = await import("../../reporting/html-to-png.ts")
+  const html = `<!doctype html><html><head>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Micro+5&display=swap" rel="stylesheet">
+  </head><body></body></html>`
+  const offline = inlineOfflineStyles(html)
+  assert(!offline.includes("fonts.googleapis.com"), "Offline bootstrap strips Google Fonts preconnect and stylesheet links")
+  assert(offline.includes("<style>") || offline.includes("font-display"), "Offline bootstrap injects a fallback style block")
+}
+
 console.log("\n\u001b[1mCLI tests\u001b[0m")
 
 const sample = run(["sample", "--no-color"])

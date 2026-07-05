@@ -283,6 +283,17 @@ rm -rf ./reports ./.env ./cachecatch-x-share*.png ~/.cachecatch
 
 ---
 
+## Security
+
+Cachecatch is designed with security and privacy as core principles. For details on supported versions, vulnerability reporting, and security measures, see [SECURITY.md](./SECURITY.md).
+
+Key security highlights:
+- **No install scripts**: No `preinstall`, `install`, or arbitrary code execution during installation.
+- **Provenance**: Published with npm provenance to verify build integrity.
+- **Local execution**: All operations run locally; no telemetry or data collection.
+- **API keys**: Never logged or stored in reports; read from `.env` (gitignored).
+- **GitHub security**: Dependabot, CodeQL, and secret scanning enabled.
+
 ## Troubleshooting
 
 ### Missing project

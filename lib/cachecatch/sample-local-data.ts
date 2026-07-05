@@ -1,4 +1,55 @@
 import type { LocalAgentReport } from "../../src/types/index.ts"
+import { adviceForLocalProject } from "../../src/engine/advice.ts"
+
+const sampleProjects = [
+  {
+    path: "~/code/support-copilot",
+    sessions: 38,
+    totalTokens: 1_180_000,
+    cacheReadPercent: 0.092,
+    modelCostUsd: 5.2,
+    hasAgentsMd: true,
+    hasClaudeMd: true,
+    agentsMdStatus: "present" as const,
+    claudeMdStatus: "present" as const,
+    advice: ["Keep AGENTS.md stable", "Move logs to tail"],
+  },
+  {
+    path: "~/code/docs-rag",
+    sessions: 28,
+    totalTokens: 820_000,
+    cacheReadPercent: 0.074,
+    modelCostUsd: 3.8,
+    hasAgentsMd: false,
+    hasClaudeMd: false,
+    agentsMdStatus: "missing" as const,
+    claudeMdStatus: "missing" as const,
+    advice: ["Add AGENTS.md with repo rules", "Add CLAUDE.md for Claude Code"],
+  },
+  {
+    path: "~/code/refund-service",
+    sessions: 23,
+    totalTokens: 840_000,
+    cacheReadPercent: null,
+    modelCostUsd: 3.4,
+    hasAgentsMd: true,
+    hasClaudeMd: false,
+    agentsMdStatus: "present" as const,
+    claudeMdStatus: "missing" as const,
+    advice: ["Add CLAUDE.md if using Claude Code", "Move dynamic state to tail"],
+  },
+]
+
+const sampleProjectsWithFixAdvice = sampleProjects.map((p) => ({
+  ...p,
+  fixAdvice: adviceForLocalProject({
+    projectPath: p.path,
+    agentsMdStatus: p.agentsMdStatus,
+    claudeMdStatus: p.claudeMdStatus,
+    cacheReadPercent: p.cacheReadPercent,
+    sessions: p.sessions,
+  }),
+}))
 
 export const sampleLocalReport: LocalAgentReport = {
   reportType: "local-agent-context-audit",
@@ -216,38 +267,7 @@ export const sampleLocalReport: LocalAgentReport = {
     { rawName: "gpt-4.1-mini", sessions: 14, pricingKnown: true, pricingConfidence: "high" },
     { rawName: "codex-mini-latest", sessions: 9, pricingKnown: false, pricingConfidence: "low" },
   ],
-  projects: [
-    {
-      path: "~/code/support-copilot",
-      sessions: 38,
-      totalTokens: 1_180_000,
-      cacheReadPercent: 0.092,
-      modelCostUsd: 5.2,
-      hasAgentsMd: true,
-      hasClaudeMd: true,
-      advice: ["Keep AGENTS.md stable", "Move logs to tail"],
-    },
-    {
-      path: "~/code/docs-rag",
-      sessions: 28,
-      totalTokens: 820_000,
-      cacheReadPercent: 0.074,
-      modelCostUsd: 3.8,
-      hasAgentsMd: false,
-      hasClaudeMd: false,
-      advice: ["Add AGENTS.md with repo rules", "Add CLAUDE.md for Claude Code"],
-    },
-    {
-      path: "~/code/refund-service",
-      sessions: 23,
-      totalTokens: 840_000,
-      cacheReadPercent: null,
-      modelCostUsd: 3.4,
-      hasAgentsMd: true,
-      hasClaudeMd: false,
-      advice: ["Add CLAUDE.md if using Claude Code", "Move dynamic state to tail"],
-    },
-  ],
+  projects: sampleProjectsWithFixAdvice,
   activity: {
     toolCalls: 1_247,
     subagentRuns: 38,

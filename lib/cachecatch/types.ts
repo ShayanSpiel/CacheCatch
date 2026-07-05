@@ -21,6 +21,8 @@ export type {
   CachecatchRouteDiagnostic,
   CachecatchReportDetails,
   CachecatchReport,
+  RoutePromptRebuild,
+  FixAdvice,
 } from "../../src/types/index.js"
 
 // Legacy aliases — `NormalizedRun` was renamed to `NormalizedTrace`.

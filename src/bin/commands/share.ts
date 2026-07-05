@@ -13,8 +13,8 @@
 import { Command } from "commander"
 import chalk from "chalk"
 import { readFileSync, existsSync } from "node:fs"
-import { resolve, dirname } from "node:path"
-import { spawn } from "node:child_process"
+import { resolve, dirname, isAbsolute, normalize } from "node:path"
+import { spawn, type StdioOptions } from "node:child_process"
 import { input, confirm } from "@inquirer/prompts"
 import { sampleReport } from "../../../lib/cachecatch/sample-data.ts"
 import { renderXCardHtml } from "../../reporting/x-card.ts"
@@ -36,47 +36,82 @@ interface ShareFlags {
 }
 
 /**
- * Open a file in the OS default viewer. macOS: `open`, Linux: `xdg-open`,
- * Windows: `cmd /c start ""`. Best-effort: never throws, exits silently
- * if the opener isn't on PATH (CI, headless servers, etc).
+ * Pick the most reasonable OS-specific command to open `filePath` in the
+ * default viewer. Returns a command + args tuple, or null if the host does
+ * not have a usable opener (e.g. headless Linux without xdg-open).
  */
-function openInOS(filePath: string): void {
-  try {
-    let cmd: string
-    let args: string[]
-    if (process.platform === "darwin") {
-      cmd = "open"
-      args = [filePath]
-    } else if (process.platform === "win32") {
-      cmd = "cmd"
-      args = ["/c", "start", "", filePath]
-    } else {
-      cmd = "xdg-open"
-      args = [filePath]
-    }
-    const child = spawn(cmd, args, { detached: true, stdio: "ignore" })
-    child.unref()
-  } catch {
-    // ignore — best-effort
+export function openCommandForPlatform(filePath: string): { cmd: string; args: string[] } | null {
+  if (!filePath) return null
+  if (process.platform === "darwin") return { cmd: "open", args: [filePath] }
+  if (process.platform === "win32") {
+    // cmd /c start "" "<path>" — the empty quoted string is the window title
+    // and prevents cmd from treating a path with spaces as a title.
+    return { cmd: "cmd", args: ["/c", "start", "", filePath] }
   }
+  return { cmd: "xdg-open", args: [filePath] }
+}
+
+/**
+ * Pick the most reasonable OS-specific command to reveal `filePath` in a
+ * file manager. On Linux there is no portable "select file" command, so
+ * we fall back to opening the parent directory. Returns null only when
+ * no usable command exists.
+ */
+export function revealCommandForPlatform(filePath: string): { cmd: string; args: string[]; note?: string } | null {
+  if (!filePath) return null
+  if (process.platform === "darwin") return { cmd: "open", args: ["-R", filePath] }
+  if (process.platform === "win32") {
+    // explorer.exe /select,"<path>" — note the lack of space after the comma,
+    // which is the documented Windows convention. spawn() handles the
+    // quoting automatically because the comma+path is a single argv entry.
+    return { cmd: "explorer", args: [`/select,${filePath}`] }
+  }
+  return { cmd: "xdg-open", args: [dirname(filePath)], note: "Linux has no portable 'select file' command; opened the parent directory." }
+}
+
+function safeSpawn(cmd: string, args: string[]): boolean {
+  if (!cmd) return false
+  const stdio: StdioOptions = "ignore"
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio, windowsHide: true })
+    child.on("error", () => {
+      // Swallow ENOENT/EPERM on shells without the opener; the share
+      // command itself still succeeds because the PNG is already on disk.
+    })
+    child.unref()
+    return true
+  } catch {
+    return false
+  }
+}
+
+function normalizeForOs(filePath: string): string {
+  const abs = isAbsolute(filePath) ? filePath : resolve(filePath)
+  return process.platform === "win32" ? normalize(abs) : abs
+}
+
+/**
+ * Open a file in the OS default viewer. Best-effort: never throws, returns
+ * silently if the opener isn't on PATH (CI, headless servers, etc).
+ */
+export function openInOS(filePath: string): boolean {
+  const target = normalizeForOs(filePath)
+  const spec = openCommandForPlatform(target)
+  if (!spec) return false
+  return safeSpawn(spec.cmd, spec.args)
 }
 
 /**
  * Reveal a file in the OS file manager (Finder / Explorer / xdg).
- * macOS: `open -R`, Windows: `explorer /select,`, Linux: opens the parent dir.
+ * Returns true if a spawn was issued, false if no opener is available.
+ * Linux fall-back opens the parent directory; callers can introspect this
+ * via revealCommandForPlatform().note.
  */
-function revealInOS(filePath: string): void {
-  try {
-    if (process.platform === "darwin") {
-      spawn("open", ["-R", filePath], { detached: true, stdio: "ignore" }).unref()
-    } else if (process.platform === "win32") {
-      spawn("explorer", [`/select,${filePath}`], { detached: true, stdio: "ignore" }).unref()
-    } else {
-      spawn("xdg-open", [dirname(filePath)], { detached: true, stdio: "ignore" }).unref()
-    }
-  } catch {
-    // ignore
-  }
+export function revealInOS(filePath: string): boolean {
+  const target = normalizeForOs(filePath)
+  const spec = revealCommandForPlatform(target)
+  if (!spec) return false
+  return safeSpawn(spec.cmd, spec.args)
 }
 
 function extractHandle(raw: string): string {

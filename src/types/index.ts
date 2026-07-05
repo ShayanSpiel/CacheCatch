@@ -179,6 +179,50 @@ export interface RecommendedLayout {
   dynamicTail: string[]
 }
 
+/**
+ * A concrete, route-aware prompt-rebuild plan.
+ *
+ * Produced by `src/engine/route-rebuild.ts` from the divergence
+ * position in `prefix-matcher.ts` and the field positions in
+ * `detectors.ts`. The advice generator in `src/engine/advice.ts`
+ * reads this object to write route-specific copy — not the
+ * historical 11 hardcoded one-liners.
+ */
+export interface RoutePromptRebuild {
+  route: string
+  model?: string
+  /** Labels the route's stable prefix should carry. Derived from the breaker shape, not hardcoded. */
+  stableHeader: string[]
+  /** Fields detected in the stable prefix that should be moved to the dynamic tail. */
+  fieldsToMoveDown: { name: string; currentChar: number; firstSeen: string }[]
+  /** Tool schemas or examples that should be sorted / versioned. */
+  fieldsToSort: { kind: "tool_schema" | "examples"; reason: string }[]
+  /** Real before/after prompt slice from two comparable traces (when ≥2 traces exist). */
+  exampleDiff: {
+    from: { traceId: string; char: number; slice: string }
+    to: { traceId: string; char: number; slice: string }
+  } | null
+  /** Stable token count the route would have if the rebuild were applied. */
+  reusableTokensAfterFix: number
+  /** Expected cache-read rate after the fix is applied, in [0, 1]. Clamped to ≥ current rate. */
+  expectedCacheReadRateAfterFix: number
+  /** Expected monthly savings after the fix, in USD. null when pricing is missing. */
+  expectedMonthlySavingsUsd: number | null
+  /** Cache-contract rule string (provider-specific cache key requirements), when known. */
+  cacheContractNote: string | null
+}
+
+/** Route-specific, dynamic advice. Generated per-route by `src/engine/advice.ts`. */
+export interface FixAdvice {
+  title: string
+  oneLiner: string
+  whatToChange: string[]
+  whyItHurts: { human: string; technical: string }
+  agentInstruction: string
+  validation: { command: string; successCriteria: string[] }
+  sourceLocation?: string
+}
+
 export interface CachecatchRouteDiagnostic {
   route: string
   model?: string
@@ -268,6 +312,10 @@ export interface CachecatchReport {
   recommendedLayout: RecommendedLayout
   fixPlan: string[]
   dataQuality: DataQuality
+  /** Parallel to `routes`: a concrete rebuild plan per route. */
+  rebuilds?: RoutePromptRebuild[]
+  /** Parallel to `routes`: route-specific dynamic advice. */
+  advice?: FixAdvice[]
   details?: CachecatchReportDetails
 }
 
@@ -352,9 +400,14 @@ export interface LocalAgentProjectSummary {
   totalTokens: number
   cacheReadPercent: number | null
   modelCostUsd: number | null
+  agentsMdStatus?: "missing" | "weak" | "present" | "unknown"
+  claudeMdStatus?: "missing" | "weak" | "present" | "unknown"
   hasAgentsMd?: boolean
   hasClaudeMd?: boolean
+  /** Legacy: short bullets rendered in the terminal report. */
   advice: string[]
+  /** New: route-specific dynamic advice from `src/engine/advice.ts`. */
+  fixAdvice?: FixAdvice
 }
 
 export interface LocalAgentActivitySummary {

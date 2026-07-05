@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process"
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
-import { basename, extname, join, resolve } from "node:path"
+import { basename, dirname, extname, join, resolve, sep } from "node:path"
+import { pricingForModel as registryPricingForModel } from "./pricing.ts"
+import { adviceForLocalProject as adviceForLocalProjectFn, type FixAdvice } from "./advice.ts"
 import type {
   AgentTelemetrySource,
   AgentTelemetryVisibility,
@@ -118,6 +120,8 @@ interface AgentSignals {
   reusableEstimatedTokens: number
 }
 
+type MarkdownStatus = "missing" | "weak" | "present" | "unknown"
+
 export interface LocalAuditOptions {
   window: AuditWindow
   project?: string
@@ -145,23 +149,6 @@ const STABLE_CONTEXT_PATTERNS = [
 ]
 
 const SUMMARY_PATTERNS = [/\bsummary\b/i, /\brecap\b/i, /\bcontext compact/i, /\bcompacted\b/i]
-
-const MODEL_ALIASES: Array<[RegExp, ModelPricing]> = [
-  [/claude(?:-| )?3\.?5(?:-| )?sonnet|claude(?:-| )?sonnet/i, { normalizedName: "claude-sonnet", provider: "anthropic", inputUsdPerMTok: 3, pricingConfidence: "medium" }],
-  [/claude(?:-| )?opus/i, { normalizedName: "claude-opus", provider: "anthropic", inputUsdPerMTok: 15, pricingConfidence: "medium" }],
-  [/claude(?:-| )?haiku/i, { normalizedName: "claude-haiku", provider: "anthropic", inputUsdPerMTok: 0.8, pricingConfidence: "medium" }],
-  [/gpt-5|codex/i, { normalizedName: "gpt-codex-family", provider: "openai", inputUsdPerMTok: 1.25, pricingConfidence: "low" }],
-  [/gpt-4\.?1|gpt-4o|o3|o4/i, { normalizedName: "gpt-family", provider: "openai", inputUsdPerMTok: 2.5, pricingConfidence: "low" }],
-  [/gpt-4o-mini|gpt-4\.?1-mini|o4-mini/i, { normalizedName: "gpt-mini-family", provider: "openai", inputUsdPerMTok: 0.15, pricingConfidence: "low" }],
-  [/gemini(?:-| )?2\.?5(?:-| )?pro|gemini(?:-| )?pro/i, { normalizedName: "gemini-pro", provider: "google", inputUsdPerMTok: 1.25, pricingConfidence: "low" }],
-  [/gemini(?:-| )?flash/i, { normalizedName: "gemini-flash", provider: "google", inputUsdPerMTok: 0.3, pricingConfidence: "low" }],
-  [/glm/i, { normalizedName: "glm-family", provider: "zhipu", pricingConfidence: "low" }],
-  [/qwen/i, { normalizedName: "qwen-family", provider: "alibaba", pricingConfidence: "low" }],
-  [/deepseek/i, { normalizedName: "deepseek-family", provider: "deepseek", pricingConfidence: "low" }],
-  [/minimax/i, { normalizedName: "minimax-family", provider: "minimax", pricingConfidence: "low" }],
-  [/kimi|moonshot/i, { normalizedName: "kimi-family", provider: "moonshot", pricingConfidence: "low" }],
-  [/codestral|mistral/i, { normalizedName: "codestral-family", provider: "mistral", pricingConfidence: "low" }],
-]
 
 function windowStart(window: AuditWindow, now: Date): number {
   const days = window === "24h" ? 1 : window === "7d" ? 7 : window === "30d" ? 30 : 365
@@ -856,6 +843,7 @@ function parseCandidate(provider: LocalAgentProvider, type: CandidateType, raw: 
 
     if (provider === "claude-code") {
       textParts.push(...parseClaudeRecord(record))
+      projectPath ??= asString(payload?.cwd)
     } else if (provider === "codex") {
       textParts.push(...parseCodexRecord(record))
       projectPath ??= asString(payload?.cwd)
@@ -922,19 +910,77 @@ function parseOpenCodeModel(value: unknown): string[] {
   return [value]
 }
 
-function projectAdvice(path: string, cacheReadPercent: number | null): {
+function normalizeProjectPath(path: string | undefined): string | undefined {
+  if (typeof path !== "string") return undefined
+  const trimmed = path.trim()
+  if (!trimmed || trimmed === "unknown") return undefined
+  try {
+    return resolve(trimmed)
+  } catch {
+    return undefined
+  }
+}
+
+function inferClaudeProjectPath(rootPath: string, filePath: string): string | undefined {
+  const projectsMarker = `${sep}.claude${sep}projects`
+  if (!rootPath.includes(projectsMarker) && !rootPath.endsWith(`${sep}projects`)) return undefined
+  if (!filePath.startsWith(rootPath + sep) && filePath !== rootPath) return undefined
+  const after = filePath.slice(rootPath.length).replace(new RegExp(`^\\${sep}+`), "")
+  if (!after) return undefined
+  // Claude Code's storage layout is `~/.claude/projects/<encoded-absolute-path>/<file>`.
+  // The encoded segment is a stable per-project identifier; it is NOT a real
+  // path on disk we can resolve, so we keep the full bucket path verbatim as
+  // the project key. resolve() is deliberately avoided here.
+  const bucket = dirname(join(rootPath, after))
+  if (!bucket || bucket === rootPath) return undefined
+  return bucket
+}
+
+function markdownStatus(projectRoot: string | undefined, filename: "AGENTS.md" | "CLAUDE.md"): MarkdownStatus {
+  if (!projectRoot) return "unknown"
+  const path = resolve(projectRoot, filename)
+  if (!existsSync(path)) return "missing"
+  try {
+    const text = readFileSync(path, "utf-8")
+    const tokens = approximateTokens(text)
+    if (tokens < 30 && text.trim().length < 120) return "weak"
+    const hasStructure = /^(#{1,3}\s|-{2,}|\*\s|\d+\.\s)/m.test(text)
+    const mentionsStableUsage = /rules|instructions|layout|testing|commands|architecture|repo|project|context/i.test(text)
+    if (!hasStructure && !mentionsStableUsage) return "weak"
+    return "present"
+  } catch {
+    return "unknown"
+  }
+}
+
+function projectAdvice(path: string, cacheReadPercent: number | null, sessions = 0): {
+  agentsMdStatus: MarkdownStatus
+  claudeMdStatus: MarkdownStatus
   hasAgentsMd?: boolean
   hasClaudeMd?: boolean
   advice: string[]
+  fixAdvice: FixAdvice
 } {
-  const hasAgentsMd = existsSync(join(path, "AGENTS.md"))
-  const hasClaudeMd = existsSync(join(path, "CLAUDE.md"))
+  const normalizedPath = normalizeProjectPath(path)
+  const agentsMdStatus = markdownStatus(normalizedPath, "AGENTS.md")
+  const claudeMdStatus = markdownStatus(normalizedPath, "CLAUDE.md")
+  const hasAgentsMd = agentsMdStatus === "present" || agentsMdStatus === "weak"
+  const hasClaudeMd = claudeMdStatus === "present" || claudeMdStatus === "weak"
   const advice: string[] = []
-  if (!hasAgentsMd) advice.push("Add AGENTS.md so Codex/OpenCode can start from stable repo rules instead of replaying ad hoc context.")
-  if (!hasClaudeMd) advice.push("Add CLAUDE.md or point Claude Code to AGENTS.md so Claude sessions get the same stable prefix.")
+  if (agentsMdStatus === "missing") advice.push("Add AGENTS.md so Codex/OpenCode can start from stable repo rules instead of replaying ad hoc context.")
+  if (agentsMdStatus === "weak") advice.push("Expand AGENTS.md so it carries stable repo rules, commands, architecture boundaries, and testing expectations.")
+  if (claudeMdStatus === "missing") advice.push("Add CLAUDE.md or point Claude Code to AGENTS.md so Claude sessions get the same stable prefix.")
+  if (claudeMdStatus === "weak") advice.push("Expand CLAUDE.md or make it clearly delegate to AGENTS.md so Claude sessions inherit the same stable repo rules.")
   if (cacheReadPercent !== null && cacheReadPercent < 0.35) advice.push("Cache-read is low for this project; move logs, diffs, terminal output, and task-specific notes below stable repo instructions.")
   if (advice.length === 0) advice.push("Keep repo instruction files stable. Avoid timestamps, sprint notes, and current-task state in the stable files.")
-  return { hasAgentsMd, hasClaudeMd, advice }
+  const fixAdvice = adviceForLocalProjectFn({
+    projectPath: normalizedPath ?? path,
+    agentsMdStatus,
+    claudeMdStatus,
+    cacheReadPercent,
+    sessions,
+  })
+  return { agentsMdStatus, claudeMdStatus, hasAgentsMd, hasClaudeMd, advice, fixAdvice }
 }
 
 function parseSqliteCandidate(
@@ -1177,11 +1223,24 @@ function redactText(text: string, enabled: boolean): string {
 }
 
 function pricingForModel(rawName: string): ModelPricing | undefined {
-  for (const [pattern, pricing] of MODEL_ALIASES) {
-    pattern.lastIndex = 0
-    if (pattern.test(rawName)) return pricing
+  // The local report historically surfaces a separate `pricingKnown`
+  // flag and per-agent `modelCostUsd`. We resolve through the
+  // central `pricing.ts` registry so the price table stays in one
+  // place, then map back to the local shape.
+  const p = registryPricingForModel(rawName)
+  if (!p) return undefined
+  const confidence: Record<typeof p.source, Confidence> = {
+    official: "medium",
+    openrouter: "low",
+    community: "low",
+    estimate: "low",
   }
-  return undefined
+  return {
+    normalizedName: p.family,
+    provider: p.provider,
+    inputUsdPerMTok: p.inputUsdPerMTok,
+    pricingConfidence: confidence[p.source],
+  }
 }
 
 function loadSessions(options: LocalAuditOptions): {
@@ -1255,6 +1314,7 @@ function loadSessions(options: LocalAuditOptions): {
           continue
         }
         parsed = parseCandidate(root.agent, candidateType, raw, options.redact !== false)
+        if (root.agent === "claude-code" && !parsed.projectPath) parsed.projectPath = inferClaudeProjectPath(root.path, file)
       }
       diagnostic.parseStatus = parsed.status
       diagnostic.parseReason = parsed.reason
@@ -1359,17 +1419,6 @@ function loadSessions(options: LocalAuditOptions): {
     inWindowFound,
     projects: discoveredProjects,
     activity: discoveredActivity,
-  }
-}
-
-function hasWeakMarkdown(projectRoot: string | undefined, filename: "AGENTS.md" | "CLAUDE.md"): boolean {
-  if (!projectRoot) return true
-  const path = resolve(projectRoot, filename)
-  try {
-    const text = readFileSync(path, "utf-8")
-    return approximateTokens(text) < 120 || !/rules|instructions|layout|testing|commands/i.test(text)
-  } catch {
-    return true
   }
 }
 
@@ -1561,29 +1610,49 @@ function summarizeProjectsFromSessions(
 ): LocalAgentReport["projects"] {
   const byPath = new Map<string, LocalSession[]>()
   for (const session of sessions) {
-    if (!isReportableProjectPath(session.projectPath)) continue
-    const existing = byPath.get(session.projectPath) ?? []
+    const projectPath = normalizeProjectPath(session.projectPath)
+    if (!isReportableProjectPath(projectPath)) continue
+    const existing = byPath.get(projectPath) ?? []
     existing.push(session)
-    byPath.set(session.projectPath, existing)
+    byPath.set(projectPath, existing)
   }
 
-  const projects = Array.from(byPath.entries()).map(([path, projectSessions]) => {
+  const merged = new Map<string, LocalAgentReport["projects"][number]>()
+  for (const [path, projectSessions] of byPath.entries()) {
     const stats = sessionStats(projectSessions)
-    return {
+    merged.set(path, {
       path,
       sessions: projectSessions.length,
       totalTokens: stats.totalTokens,
       cacheReadPercent: stats.cacheReadPercent,
       modelCostUsd: stats.modelCostUsd,
-      ...projectAdvice(path, stats.cacheReadPercent),
-    }
-  })
+      ...projectAdvice(path, stats.cacheReadPercent, projectSessions.length),
+    })
+  }
 
-  const ranked = projects.sort((a, b) => b.sessions - a.sessions || b.totalTokens - a.totalTokens || a.path.localeCompare(b.path))
-  if (ranked.length > 0) return ranked
-  return fallbackProjects
-    .filter((project) => isReportableProjectPath(project.path))
-    .sort((a, b) => b.sessions - a.sessions || b.totalTokens - a.totalTokens || a.path.localeCompare(b.path))
+  for (const project of fallbackProjects) {
+    const path = normalizeProjectPath(project.path)
+    if (!isReportableProjectPath(path)) continue
+    const existing = merged.get(path)
+    if (!existing) {
+      merged.set(path, {
+        ...project,
+        path,
+        ...projectAdvice(path, project.cacheReadPercent, project.sessions),
+      })
+      continue
+    }
+    merged.set(path, {
+      ...existing,
+      sessions: Math.max(existing.sessions, project.sessions),
+      totalTokens: Math.max(existing.totalTokens, project.totalTokens),
+      cacheReadPercent: existing.cacheReadPercent ?? project.cacheReadPercent,
+      modelCostUsd: existing.modelCostUsd ?? project.modelCostUsd,
+      ...projectAdvice(path, existing.cacheReadPercent ?? project.cacheReadPercent, Math.max(existing.sessions, project.sessions)),
+    })
+  }
+
+  return Array.from(merged.values()).sort((a, b) => b.sessions - a.sessions || b.totalTokens - a.totalTokens || a.path.localeCompare(b.path))
 }
 
 function confidence(sessionsAnalyzed: number, modelCount: number, cashKnown: boolean): Confidence {
@@ -1813,7 +1882,6 @@ function buildDiagnostics(
 }
 
 export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentReport {
-  const projectRoot = options.project ? resolve(options.project) : process.cwd()
   const debugSample = Math.max(1, Math.min(100, options.debugSample ?? 20))
   const {
     sessions,
@@ -1910,26 +1978,35 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
     }
   }
 
-  const weakAgents = hasWeakMarkdown(projectRoot, "AGENTS.md")
-  const weakClaude = hasWeakMarkdown(projectRoot, "CLAUDE.md")
   const allModels = summarizeModels(sessions)
   const unknownModelCount = allModels.filter((m) => !m.pricingKnown).length
   const allSignals = signalsFor(sessions, unknownModelCount)
   const cash = cashRange(sessions, allSignals)
-  const recs = recommendations(weakAgents, weakClaude, sessions.some((session) => session.agent === "claude-code"))
   const allStats = sessionStats(sessions)
-  const allScore = localScore(allStats, allSignals, weakAgents)
   const rankedProjects = summarizeProjectsFromSessions(sessions, projects)
-
-  const claudeProjectsMissingClaudeMd = rankedProjects.filter((p) => !p.hasClaudeMd && sessions.some((s) => s.agent === "claude-code" && s.projectPath === p.path))
-  const claudeSessionsInWeakProjects = sessions.filter((s) => s.agent === "claude-code" && claudeProjectsMissingClaudeMd.some((p) => p.path === s.projectPath))
+  const projectsMissingAgents = rankedProjects.filter((project) => project.agentsMdStatus === "missing")
+  const projectsWithWeakAgents = rankedProjects.filter((project) => project.agentsMdStatus === "weak")
+  const claudeProjectsMissingClaudeMd = rankedProjects.filter((project) => project.claudeMdStatus === "missing" && sessions.some((session) => session.agent === "claude-code" && normalizeProjectPath(session.projectPath) === project.path))
+  const claudeProjectsWithWeakClaudeMd = rankedProjects.filter((project) => project.claudeMdStatus === "weak" && sessions.some((session) => session.agent === "claude-code" && normalizeProjectPath(session.projectPath) === project.path))
+  const weakAgents = projectsMissingAgents.length > 0 || projectsWithWeakAgents.length > 0
+  const weakClaude = claudeProjectsMissingClaudeMd.length > 0 || claudeProjectsWithWeakClaudeMd.length > 0
+  const recs = recommendations(weakAgents, weakClaude, sessions.some((session) => session.agent === "claude-code"))
+  const allScore = localScore(allStats, allSignals, weakAgents)
+  const claudeSessionsInWeakProjects = sessions.filter((session) => session.agent === "claude-code" && [...claudeProjectsMissingClaudeMd, ...claudeProjectsWithWeakClaudeMd].some((project) => project.path === normalizeProjectPath(session.projectPath)))
 
   const globalFindings: LocalAgentFinding[] = []
   if (allSignals.dynamicEarly > 0) globalFindings.push(finding("dynamic-context-early", "Dynamic logs/diffs/tool output appear early", `${allSignals.dynamicEarly} parsed session(s) had volatile command output, timestamps, errors, or diffs near the beginning.`, "Move terminal output, logs, stack traces, and git diffs to the end of task context.", "high"))
-  if (weakAgents) globalFindings.push(finding("weak-agents-md", "Missing or weak AGENTS.md", "AGENTS.md was missing, short, or did not contain stable repo instructions.", "Create or update AGENTS.md with stable repo rules and commands.", "medium"))
-  if (weakClaude && claudeSessionsInWeakProjects.length > 0 && claudeProjectsMissingClaudeMd.length > 0) {
-    const projectPaths = claudeProjectsMissingClaudeMd.slice(0, 3).map((p) => p.path).join(", ")
-    globalFindings.push(finding("weak-claude-md", "Missing or weak CLAUDE.md", `Claude Code sessions in ${projectPaths} lack CLAUDE.md. ${claudeSessionsInWeakProjects.length} session(s) affected.`, "Create or update CLAUDE.md or point it to AGENTS.md in affected projects.", "low", "claude-code"))
+  if (projectsMissingAgents.length > 0 || projectsWithWeakAgents.length > 0) {
+    const evidenceParts: string[] = []
+    if (projectsMissingAgents.length > 0) evidenceParts.push(`Missing in ${projectsMissingAgents.slice(0, 3).map((project) => project.path).join(", ")}`)
+    if (projectsWithWeakAgents.length > 0) evidenceParts.push(`Present but too thin in ${projectsWithWeakAgents.slice(0, 3).map((project) => project.path).join(", ")}`)
+    globalFindings.push(finding("weak-agents-md", "Missing or weak AGENTS.md", `${evidenceParts.join(". ")}.`, "Create or update AGENTS.md with stable repo rules, commands, architecture boundaries, and testing expectations in the affected projects.", "medium"))
+  }
+  if (weakClaude && claudeSessionsInWeakProjects.length > 0) {
+    const evidenceParts: string[] = []
+    if (claudeProjectsMissingClaudeMd.length > 0) evidenceParts.push(`Missing in ${claudeProjectsMissingClaudeMd.slice(0, 3).map((project) => project.path).join(", ")}`)
+    if (claudeProjectsWithWeakClaudeMd.length > 0) evidenceParts.push(`Present but too thin in ${claudeProjectsWithWeakClaudeMd.slice(0, 3).map((project) => project.path).join(", ")}`)
+    globalFindings.push(finding("weak-claude-md", "Missing or weak CLAUDE.md", `Claude Code sessions are affected. ${evidenceParts.join(". ")}. ${claudeSessionsInWeakProjects.length} session(s) affected.`, "Create or update CLAUDE.md or point it to AGENTS.md in affected projects.", "low", "claude-code"))
   }
   if (allSignals.repeatedContext > 0) globalFindings.push(finding("repeated-project-context", "Repeated stable project context across sessions", `${allSignals.repeatedContext} parsed session(s) repeated stable project instructions that could live in markdown files.`, "Move stable project context into AGENTS.md and/or CLAUDE.md.", "medium"))
   if ((["claude-code", "codex"] as LocalAgentProvider[]).some((agent) => {
@@ -1959,13 +2036,17 @@ export function buildLocalAgentAudit(options: LocalAuditOptions): LocalAgentRepo
       if (agentSignals.dynamicEarly > 0) agentFindingsList.push(finding("dynamic-context-early", "Dynamic logs/diffs/tool output appear early", `${agentSignals.dynamicEarly} parsed session(s) had volatile command output, timestamps, errors, or diffs near the beginning.`, "Move terminal output, logs, stack traces, and git diffs to the end of task context.", "high"))
       if (agentWeak) {
         if (agent === "claude-code") {
-          const agentClaudeProjects = claudeProjectsMissingClaudeMd.filter((p) => agentSessions.some((s) => s.projectPath === p.path))
+          const agentClaudeProjects = [...claudeProjectsMissingClaudeMd, ...claudeProjectsWithWeakClaudeMd].filter((project) => agentSessions.some((session) => normalizeProjectPath(session.projectPath) === project.path))
           if (agentClaudeProjects.length > 0) {
             const projectPaths = agentClaudeProjects.slice(0, 3).map((p) => p.path).join(", ")
-            agentFindingsList.push(finding("weak-claude-md", "Missing or weak CLAUDE.md", `Claude Code sessions in ${projectPaths} lack CLAUDE.md.`, "Create or update CLAUDE.md or point it to AGENTS.md in affected projects.", "low", "claude-code"))
+            agentFindingsList.push(finding("weak-claude-md", "Missing or weak CLAUDE.md", `Claude Code sessions in ${projectPaths} are missing CLAUDE.md or the file is too thin to carry stable repo rules.`, "Create or update CLAUDE.md or point it to AGENTS.md in affected projects.", "low", "claude-code"))
           }
         } else {
-          agentFindingsList.push(finding("weak-agents-md", "Missing or weak AGENTS.md", "AGENTS.md was missing, short, or did not contain stable repo instructions.", "Create or update AGENTS.md with stable repo rules and commands.", "medium"))
+          const relevantProjects = rankedProjects.filter((project) => (project.agentsMdStatus === "missing" || project.agentsMdStatus === "weak") && agentSessions.some((session) => normalizeProjectPath(session.projectPath) === project.path))
+          if (relevantProjects.length > 0) {
+            const projectPaths = relevantProjects.slice(0, 3).map((project) => project.path).join(", ")
+            agentFindingsList.push(finding("weak-agents-md", "Missing or weak AGENTS.md", `Parsed sessions in ${projectPaths} are missing AGENTS.md or the file is too thin to carry stable repo rules.`, "Create or update AGENTS.md with stable repo rules and commands in affected projects.", "medium"))
+          }
         }
       }
       if (agentSignals.repeatedContext > 0) agentFindingsList.push(finding("repeated-project-context", "Repeated stable project context across sessions", `${agentSignals.repeatedContext} parsed session(s) repeated stable project instructions that could live in markdown files.`, "Move stable project context into AGENTS.md and/or CLAUDE.md.", "medium"))

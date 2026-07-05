@@ -267,6 +267,8 @@ export function renderIdeAgentXCardHtml(data: IdeAgentXCardData): string {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Micro+5&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+/* Offline-safe fallback so banner rendering never blocks on a remote font fetch. */
+@font-face{font-family:"CacheCatchMicro5Fallback";src:local("Micro 5"),local("Micro5"),local("JetBrains Mono"),local("Menlo"),local("Consolas"),local("monospace");font-display:swap;}
 :root{
   --bg:#050605;
   --ink:#f4f5f1;
@@ -297,28 +299,28 @@ html,body{
 .user{position:absolute;top:62px;left:56px;display:flex;align-items:center;gap:16px;z-index:3}
 .avatar{width:88px;height:88px;border-radius:50%;border:1.6px solid var(--green);background:#09120c;overflow:hidden;box-shadow:0 0 20px rgba(116,245,154,.12);flex:0 0 88px}
 .avatar img{width:100%;height:100%;object-fit:cover;display:block}
-.avatar .fallback{display:none;width:100%;height:100%;place-items:center;font-family:"Micro 5";font-size:64px;color:var(--green)}
+.avatar .fallback{display:none;width:100%;height:100%;place-items:center;font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:64px;color:var(--green)}
 .handle{display:flex;align-items:center;gap:0;font-size:25px;line-height:1;letter-spacing:-.045em;font-weight:800;color:#fff}
 .audit{margin-top:10px;color:var(--green);font-size:17px;font-weight:500}
 .safe{position:absolute;top:70px;right:58px;z-index:3;border:1px solid rgba(116,245,154,.5);color:var(--green);background:rgba(4,9,5,.5);border-radius:6px;padding:10px 18px;font-size:13px;font-weight:800;letter-spacing:.08em}
 .domain{position:absolute;top:118px;right:62px;z-index:3;font-size:14px;color:#b8c2ba;letter-spacing:.06em}
 .rule{position:absolute;top:156px;left:54px;right:54px;height:1px;background:rgba(255,255,255,.08);z-index:3}
 .left-main{position:absolute;left:56px;top:190px;width:420px;z-index:3;padding-right:24px;border-right:1px solid rgba(255,255,255,.12)}
-.sessions{font-family:"Micro 5";font-size:120px;line-height:.72;color:#fff;letter-spacing:.05em;white-space:nowrap}
-.session-sub{margin-top:8px;font-family:"Micro 5";color:var(--green);font-size:30px;letter-spacing:.07em;line-height:.78;text-transform:uppercase}
+.sessions{font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:120px;line-height:.72;color:#fff;letter-spacing:.05em;white-space:nowrap}
+.session-sub{margin-top:8px;font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--green);font-size:30px;letter-spacing:.07em;line-height:.78;text-transform:uppercase}
 .agent-row{margin-top:18px;width:390px}
 .agent{display:grid;grid-template-columns:26px 1fr 60px;align-items:center;gap:12px;height:30px;padding:0 2px}
 .agent-name{color:#b9c5bc;font-size:12px;font-weight:700}
-.agent-num{font-family:"Micro 5";color:var(--green);font-size:32px;line-height:.7;text-align:right;letter-spacing:.04em}
+.agent-num{font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--green);font-size:32px;line-height:.7;text-align:right;letter-spacing:.04em}
 .logo-img{width:22px;height:22px;object-fit:contain;display:block;border-radius:3px}
 .slab{position:absolute;top:172px;right:56px;width:475px;height:258px;z-index:3;padding:28px 48px 0}
 .slab:before{content:"";position:absolute;inset:0;transform:skewX(-5deg);background:linear-gradient(180deg,rgba(116,245,154,.2),rgba(116,245,154,.08)),radial-gradient(circle at 50% 15%,rgba(116,245,154,.15),transparent 60%);border:1px solid rgba(116,245,154,.25);border-radius:2px;box-shadow:inset 0 0 80px rgba(116,245,154,.05),0 0 18px rgba(116,245,154,.03)}
 .slab-inner{position:relative;z-index:1}
-.slab-label{font-family:"Micro 5";font-size:28px;color:var(--green);letter-spacing:.08em;line-height:.85;text-transform:uppercase}
-.amount{margin-top:12px;font-family:"Micro 5";font-size:112px;line-height:.72;letter-spacing:.04em;color:var(--green);white-space:nowrap}
+.slab-label{font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:28px;color:var(--green);letter-spacing:.08em;line-height:.85;text-transform:uppercase}
+.amount{margin-top:12px;font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:112px;line-height:.72;letter-spacing:.04em;color:var(--green);white-space:nowrap}
 .amount small{font-size:46px;letter-spacing:.04em}
 .findings{position:absolute;left:56px;top:448px;width:420px;height:200px;z-index:3;border:1px dashed rgba(116,245,154,.35);border-radius:8px;background:var(--panel-bg);padding:12px 18px;overflow:hidden}
-.panel-title{color:var(--green);font-family:"Micro 5";font-size:22px;letter-spacing:.1em;margin-bottom:6px}
+.panel-title{color:var(--green);font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;letter-spacing:.1em;margin-bottom:6px}
 .find-row{display:grid;grid-template-columns:105px 1fr;gap:0;padding:7px 0;border-top:1px dashed rgba(255,255,255,.08);font-size:11px;line-height:1.2}
 .find-row:first-of-type{border-top:1px solid rgba(255,255,255,.1)}
 .key{color:#b0b8b2;font-size:8.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
@@ -336,8 +338,8 @@ html,body{
 .metric-note{color:#8a948d;font-size:9.5px;line-height:1.15}
 .footer{position:absolute;left:56px;right:56px;bottom:32px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:20px}
 .brand{display:flex;align-items:center;gap:12px}
-.mark{width:38px;height:38px;color:var(--green);font-family:"Micro 5";font-size:40px;display:grid;place-items:center;line-height:1}
-.brand-name{font-family:"Micro 5";font-size:40px;line-height:.8;letter-spacing:.05em;color:#fff}
+.mark{width:38px;height:38px;color:var(--green);font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:40px;display:grid;place-items:center;line-height:1}
+.brand-name{font-family:"Micro 5","CacheCatchMicro5Fallback","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:40px;line-height:.8;letter-spacing:.05em;color:#fff}
 .command{min-width:370px;border:1px solid rgba(116,245,154,.3);background:rgba(7,12,8,.5);border-radius:6px;padding:11px 22px;font-size:14px;color:#c8d4ca;text-align:center}
 .command b{color:var(--green)}
 .credit{font-size:13px;color:#8a948d}

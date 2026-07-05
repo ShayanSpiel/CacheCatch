@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { Suspense } from "react"
 import Script from "next/script"
-import { JetBrains_Mono, Micro_5 } from "next/font/google"
+import localFont from "next/font/local"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { NotificationProvider } from "@/components/shared/notification-toast"
 import { PostHogPageView } from "@/components/analytics/posthog-provider"
@@ -11,17 +11,18 @@ import "../components/landing/landing.css"
 
 const GA_ID = "G-P43CBK4EEX"
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
+const jetbrainsMono = localFont({
+  src: "../public/fonts/jetbrains-mono-latin.woff2",
   variable: "--font-jetbrains-mono",
   display: "swap",
+  weight: "400 800",
 })
 
-const micro5 = Micro_5({
-  weight: "400",
-  subsets: ["latin"],
+const micro5 = localFont({
+  src: "../public/fonts/micro5-latin.woff2",
   variable: "--font-micro-5",
   display: "swap",
+  weight: "400",
 })
 
 export const metadata: Metadata = {

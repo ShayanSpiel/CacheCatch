@@ -268,7 +268,7 @@ function routeTableLabel(route: string, width: number): string {
 
 function routeDiagnostics(report: CachecatchReport): CachecatchRouteDiagnostic[] {
   if (report.details?.routeDiagnostics?.length) return report.details.routeDiagnostics
-  return report.routes.map((route) => diagnosticFromRoute(route, report))
+  return report.routes.map((route, i) => diagnosticFromRoute(route, report, i))
 }
 
 function firstDiagnostic(report: CachecatchReport): CachecatchRouteDiagnostic | undefined {
@@ -277,42 +277,56 @@ function firstDiagnostic(report: CachecatchReport): CachecatchRouteDiagnostic | 
 
 function diagnosticFromRoute(
   route: RouteAudit,
-  report: CachecatchReport
+  report: CachecatchReport,
+  index: number
 ): CachecatchRouteDiagnostic {
+  const advice = report.advice?.[index]
+  const rebuild = report.rebuilds?.[index]
   const finding = route.findings[0]
-  const detectedFields = fieldsForFinding(finding)
+  const detectedFields =
+    rebuild?.fieldsToMoveDown.map((f) => f.name) ??
+    (finding ? legacyFieldsForFinding(finding) : ["dynamic request fields"])
   const issue =
+    advice?.title ??
     finding?.title ??
     "The route appears to diverge before the reusable prompt prefix is exhausted."
+  const expectedRate = rebuild
+    ? `${Math.round(rebuild.expectedCacheReadRateAfterFix * 100)}%`
+    : legacyExpectedRateForRoute(route)
   return {
     route: route.route,
     model: route.model,
     monthlyRecoverableLossUsd: route.estimatedMonthlyWasteUsd,
     avgInputTokens: route.avgInputTokens,
     observedCacheReadRate: route.observedCacheReadRate,
-    expectedCacheReadRate: expectedRateForRoute(route),
+    expectedCacheReadRate: expectedRate,
     firstDivergenceToken:
       finding?.firstDivergenceToken ?? route.avgFirstDivergenceToken,
     firstDivergenceChar: finding?.firstDivergenceChar ?? route.avgFirstDivergenceChar,
     firstDivergenceTokenApproximate: Boolean(finding?.firstDivergenceChar ?? route.avgFirstDivergenceChar),
     mainIssue: issue.endsWith(".") ? issue : `${issue}.`,
     detectedFields,
-    cause: causeForFinding(finding),
+    cause: finding ? legacyCauseForFinding(finding) : "early prefix divergence",
     evidence: {
-      traceId: finding?.evidence.match(/(?:Trace|Run|trace|run)[ #]*([A-Za-z0-9._-]+)/)?.[1] ??
+      traceId:
+        rebuild?.exampleDiff?.from.traceId ??
+        finding?.evidence.match(/(?:Trace|Run|trace|run)[ #]*([A-Za-z0-9._-]+)/)?.[1] ??
         `${route.route}-sample`,
       changingValue: truncate(finding?.evidence ?? "Rendered prompt diverged early.", 96),
       patternRate: `${route.runsAnalyzed} comparable ${route.route} traces`,
     },
-    whyItHurts: {
-      human:
-        "Repeated instructions are being paid for at full input price because request-specific data appears too early.",
-      technical:
-        "Prompt caching is prefix-sensitive, so one volatile token before stable instructions can make downstream context miss the cache.",
-    },
-    whatToChange: specificFixes(finding, route),
-    agentInstruction: agentInstructionFor(finding, route),
-    validation: {
+    whyItHurts:
+      advice?.whyItHurts ?? {
+        human:
+          "Repeated instructions are being paid for at full input price because request-specific data appears too early.",
+        technical:
+          "Prompt caching is prefix-sensitive, so one volatile token before stable instructions can make downstream context miss the cache.",
+      },
+    whatToChange: advice?.whatToChange ?? [finding?.recommendation ?? "Move volatile fields below the stable reusable prefix."],
+    agentInstruction:
+      advice?.agentInstruction ??
+      `Refactor ${route.route} prompt assembly into stable_prefix and dynamic_tail. Render system role, policy, tool definitions, and static examples first. Put ${detectedFields.join(", ")}, user context, retrieved context, and tool outputs in dynamic_tail.`,
+    validation: advice?.validation ?? {
       command: `npx --yes cachecatch audit "${report.projectName}" --window 24h`,
       successCriteria: [
         "cache-read rate improves materially",
@@ -323,8 +337,14 @@ function diagnosticFromRoute(
   }
 }
 
-function fieldsForFinding(finding?: CacheFinding): string[] {
-  switch (finding?.type) {
+/**
+ * Legacy fallbacks. Kept so old reports without `rebuild`/`advice`
+ * (e.g. JSON exports from previous versions) still render. New
+ * reports always carry the new fields; these branches are only hit
+ * for historical inputs.
+ */
+function legacyFieldsForFinding(finding: CacheFinding): string[] {
+  switch (finding.type) {
     case "timestamp_in_prefix":
       return ["current_time", "timestamp"]
     case "request_id_in_prefix":
@@ -342,8 +362,8 @@ function fieldsForFinding(finding?: CacheFinding): string[] {
   }
 }
 
-function causeForFinding(finding?: CacheFinding): string {
-  switch (finding?.type) {
+function legacyCauseForFinding(finding: CacheFinding): string {
+  switch (finding.type) {
     case "timestamp_in_prefix":
       return "timestamp in prefix"
     case "request_id_in_prefix":
@@ -361,47 +381,10 @@ function causeForFinding(finding?: CacheFinding): string {
   }
 }
 
-function expectedRateForRoute(route: RouteAudit): string {
+function legacyExpectedRateForRoute(route: RouteAudit): string {
   const observed = route.observedCacheReadRate ?? 0
   const expected = Math.min(0.72, Math.max(0.35, observed + 0.35))
   return `${Math.round(expected * 100)}%`
-}
-
-function specificFixes(finding: CacheFinding | undefined, route: RouteAudit): string[] {
-  switch (finding?.type) {
-    case "timestamp_in_prefix":
-      return [
-        `Move current_time and timestamp fields below the stable prompt blocks in ${route.route}.`,
-        "Keep system role, policies, tools, and static examples byte-identical across requests.",
-      ]
-    case "request_id_in_prefix":
-      return [
-        `Move request_id, session_id, and route-specific identifiers into the dynamic tail for ${route.route}.`,
-        "Render stable policy and tool definitions before any per-request identifiers.",
-      ]
-    case "rag_before_stable_context":
-      return [
-        `Render ${route.route} summarization rules, output format, and examples before retrieved_chunks.`,
-        "Append search results and user-specific documents after the stable instructions.",
-      ]
-    case "tool_schema_drift":
-      return [
-        "Freeze, sort, and version the stable tool schema block.",
-        "Move runtime availability flags and environment-specific tool choices into a later dynamic block.",
-      ]
-    case "early_dynamic_metadata":
-      return [
-        `Split ${route.route} into stable_prefix and dynamic_tail.`,
-        "Move customer, user, CRM, or memory fields after stable policy, tools, and examples.",
-      ]
-    default:
-      return [finding?.recommendation ?? "Move volatile fields below the stable reusable prefix."]
-  }
-}
-
-function agentInstructionFor(finding: CacheFinding | undefined, route: RouteAudit): string {
-  const fields = fieldsForFinding(finding).join(", ")
-  return `Refactor ${route.route} prompt assembly into stable_prefix and dynamic_tail. Render system role, policy, tool definitions, and static examples first. Put ${fields}, user context, retrieved context, and tool outputs in dynamic_tail.`
 }
 
 export function renderHeader(report: CachecatchReport): string {
@@ -823,12 +806,21 @@ export function renderRouteDiagnostic(
 
 export function renderOptimizedPromptStructure(report: CachecatchReport): string {
   const top = firstDiagnostic(report)
+  const topRebuild = report.rebuilds?.[0]
+  const topAdvice = report.advice?.[0]
   const financial = isFinancialMode(report)
   const hasCacheTelemetry = report.dataQuality.hasCacheReadTelemetry
   const detectedFields = top?.detectedFields ?? []
   const detectedFieldRow = detectedFields.length > 0
     ? `${C.bad("×")}  [${detectedFields.join(" / ")}]`
     : `${C.bad("×")}  [no detected dynamic field on top route]`
+  const beforeDynamicBullets = topRebuild && topRebuild.fieldsToMoveDown.length > 0
+    ? topRebuild.fieldsToMoveDown.slice(0, 3).map((f) => `${C.bad("×")}  ${truncate(f.firstSeen, 56)}`)
+    : [
+        `${C.bad("×")}  [timestamp / request_id / session_id]`,
+        `${C.bad("×")}  [order_id / customer_id / CRM data]`,
+        `${C.bad("×")}  [RAG chunks / search results]`,
+      ]
   const lines: string[] = [section("Before / Fix / After Prompt Map"), ""]
   lines.push(
     callout(
@@ -842,11 +834,11 @@ export function renderOptimizedPromptStructure(report: CachecatchReport): string
     ? [
         `${C.badBold("Recoverable loss")}  ${C.badBold(`${formatUsd(report.summary.estimatedMonthlyWasteUsd)}/mo`)}  ${C.dim(moneyConfidenceLabel(report))}`,
         `${C.muted("First divergence")}  ${C.warn(divergenceLabel(top))}`,
-        `${C.muted("Cache health")}      ${C.value(`${report.score} / 100`)}  ${severity(report.score)}`,
+        topAdvice
+          ? `${C.muted("One-liner")}          ${C.value(truncate(topAdvice.oneLiner, 64))}`
+          : `${C.muted("Cache health")}      ${C.value(`${report.score} / 100`)}  ${severity(report.score)}`,
         "",
-        `${C.bad("×")}  [timestamp / request_id / session_id]`,
-        `${C.bad("×")}  [order_id / customer_id / CRM data]`,
-        `${C.bad("×")}  [RAG chunks / search results]`,
+        ...beforeDynamicBullets,
         "",
         `${C.dim("should be cached")}  [system prompt]`,
         `${C.dim("should be cached")}  [tool definitions]`,
@@ -878,8 +870,12 @@ export function renderOptimizedPromptStructure(report: CachecatchReport): string
     `${C.good("move up")}     tool definitions`,
     `${C.good("move up")}     policies and examples`,
     C.muted("────────────────────────────────────────────"),
-    `${C.bad("move down")}   timestamps, IDs, metadata`,
-    `${C.bad("move down")}   RAG chunks and tool outputs`,
+    topRebuild && topRebuild.fieldsToMoveDown.length > 0
+      ? `${C.bad("move down")}   ${truncate(topRebuild.fieldsToMoveDown[0].firstSeen, 38)}`
+      : `${C.bad("move down")}   timestamps, IDs, metadata`,
+    topRebuild && topRebuild.fieldsToMoveDown.length > 1
+      ? `${C.bad("move down")}   ${truncate(topRebuild.fieldsToMoveDown[1].firstSeen, 38)}`
+      : `${C.bad("move down")}   RAG chunks and tool outputs`,
     `${C.bad("move down")}   user-specific context`,
   ]
   const afterRows = [
@@ -922,14 +918,16 @@ export function renderPersonalizedFixPlan(report: CachecatchReport): string {
   const diagnostics = (financial && nonZero.length > 0 ? nonZero : routeDiagnostics(report)).slice(0, 3)
   const lines: string[] = [section("Personalized Fix Plan"), ""]
   diagnostics.forEach((route, index) => {
+    const advice = report.advice?.find((a) => a.title === route.mainIssue) ?? report.advice?.[index]
     lines.push(
       box(
         `Priority ${index + 1}  |  ${route.route}`,
         [
-          `${C.muted(padRight("Reason", 14))} ${financial && index === 0 ? `Largest recoverable loss source: ${C.badBold(`${formatUsd(route.monthlyRecoverableLossUsd)}/month`)}.` : route.mainIssue}`,
-          `${C.muted(padRight("Change", 14))} ${route.whatToChange[0]}`,
+          `${C.muted(padRight("Reason", 14))} ${financial && index === 0 ? `Largest recoverable loss source: ${C.badBold(`${formatUsd(route.monthlyRecoverableLossUsd)}/month`)}.` : truncate(route.mainIssue, 80)}`,
+          advice ? `${C.muted(padRight("One-liner", 14))} ${C.value(truncate(advice.oneLiner, 78))}` : "",
+          `${C.muted(padRight("Change", 14))} ${route.whatToChange[0] ?? "Move volatile fields below the stable prefix."}`,
           `${C.muted(padRight("Validate", 14))} ${C.good(route.validation.successCriteria[0])}`,
-        ],
+        ].filter(Boolean),
         financial && index === 0 ? "red" : "yellow"
       )
     )
@@ -976,19 +974,28 @@ export function renderAgentRepairPrompt(report: CachecatchReport): string {
 export function renderFullAgentPrompt(report: CachecatchReport): string {
   const diagnostics = routeDiagnostics(report)
   const financial = isFinancialMode(report)
-  const routeLines = diagnostics.flatMap((route, index) => [
-    `${index + 1}. ${route.route} (${route.model ?? "unknown model"})`,
-    financial
-      ? `   Impact: ${formatUsd(route.monthlyRecoverableLossUsd)}/month recoverable cache loss; cache-read ${formatPercent(route.observedCacheReadRate)}; first divergence ${divergenceLabel(route)}.`
-      : `   Impact: prefix drift detected; money unavailable until telemetry is enabled; cache-read ${formatPercent(route.observedCacheReadRate)}; first divergence ${divergenceLabel(route)}.`,
-    `   Problem: ${route.mainIssue}`,
-    `   Move out of stable prefix: ${route.detectedFields.join(", ")}.`,
-    `   Change: ${route.whatToChange.join(" ")}`,
-    route.sourceLocation
-      ? `   Likely builder: ${route.sourceLocation}.`
-      : "   Source file unavailable from traces; find the prompt builder for this route.",
-    "",
-  ])
+  const routeLines = diagnostics.flatMap((route, index) => {
+    const advice = report.advice?.[index]
+    return [
+      `${index + 1}. ${route.route} (${route.model ?? "unknown model"})`,
+      financial
+        ? `   Impact: ${formatUsd(route.monthlyRecoverableLossUsd)}/month recoverable cache loss; cache-read ${formatPercent(route.observedCacheReadRate)}; first divergence ${divergenceLabel(route)}.`
+        : `   Impact: prefix drift detected; money unavailable until telemetry is enabled; cache-read ${formatPercent(route.observedCacheReadRate)}; first divergence ${divergenceLabel(route)}.`,
+      `   Problem: ${route.mainIssue}`,
+      `   Move out of stable prefix: ${route.detectedFields.join(", ")}.`,
+      `   Change: ${route.whatToChange.join(" ")}`,
+      route.sourceLocation
+        ? `   Likely builder: ${route.sourceLocation}.`
+        : "   Source file unavailable from traces; find the prompt builder for this route.",
+      advice?.agentInstruction
+        ? `   Per-route agent instruction (paste as-is):\n${advice.agentInstruction
+            .split("\n")
+            .map((line) => `     ${line}`)
+            .join("\n")}`
+        : "",
+      "",
+    ]
+  })
 
   const prompt = [
     "You are fixing prompt-cache losses in this codebase.",

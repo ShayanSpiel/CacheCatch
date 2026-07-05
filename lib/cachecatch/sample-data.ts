@@ -1,4 +1,7 @@
-import type { CachecatchReport, CacheFinding, RouteAudit } from "./types.js"
+import type { CachecatchReport, CacheFinding, RouteAudit, FixAdvice, RoutePromptRebuild } from "./types.js"
+import { buildRouteRebuild } from "../../src/engine/route-rebuild.ts"
+import { adviceForRoute } from "../../src/engine/advice.ts"
+import { pricingForModel } from "../../src/engine/pricing.ts"
 
 type SampleRoute = {
   route: string
@@ -333,6 +336,34 @@ function auditFor(route: SampleRoute, index: number): RouteAudit {
 const routeAudits = routes.map(auditFor)
 const findings = routes.map(findingFor)
 
+// Per-route rebuilds and dynamic advice for the sample. The sample
+// has no real `NormalizedTrace[]` (it's a hand-curated demo), so we
+// call `buildRouteRebuild` and `adviceForRoute` directly with the
+// RouteAudit shape. The advice generator reads `route.findings` and
+// the rebuild, so the output mirrors what a real audit produces.
+const sampleRebuilds: RoutePromptRebuild[] = routeAudits.map((route) => {
+  const price = pricingForModel(route.model)
+  return buildRouteRebuild({
+    route,
+    traces: [],
+    modelPrice: price,
+    financialMode: true,
+    recoverableDeltaPerMillion: price ? price.inputUsdPerMTok - price.cachedInputUsdPerMTok : undefined,
+    monthlyProjectionFactor: 30 / 7,
+  })
+})
+const sampleAdvice: FixAdvice[] = routeAudits.map((route, i) => {
+  const price = pricingForModel(route.model)
+  return adviceForRoute({
+    route,
+    rebuild: sampleRebuilds[i],
+    findings: route.findings,
+    modelPrice: price,
+    reportMode: "financial_cache_audit",
+    financialMode: true,
+  })
+})
+
 export const sampleReport: CachecatchReport = {
   id: "sample-enterprise-001",
   createdAt: "2026-07-01T12:00:00Z",
@@ -358,6 +389,8 @@ export const sampleReport: CachecatchReport = {
   },
   routes: routeAudits,
   findings,
+  rebuilds: sampleRebuilds,
+  advice: sampleAdvice,
   recommendedLayout: {
     stablePrefix: [
       "[system role and constraints]",
@@ -576,6 +609,26 @@ const langSmithPrefixDiagnosticFindings = langSmithPrefixDiagnosticRoutes.map(
   prefixDiagnosticFindingFor
 )
 
+const lsPrefixDxRebuilds: RoutePromptRebuild[] = langSmithPrefixDiagnosticAudits.map((route) => {
+  return buildRouteRebuild({
+    route,
+    traces: [],
+    modelPrice: undefined,
+    financialMode: false,
+    monthlyProjectionFactor: 30 / 7,
+  })
+})
+const lsPrefixDxAdvice: FixAdvice[] = langSmithPrefixDiagnosticAudits.map((route, i) => {
+  return adviceForRoute({
+    route,
+    rebuild: lsPrefixDxRebuilds[i],
+    findings: route.findings,
+    modelPrice: undefined,
+    reportMode: "prefix_diagnostic",
+    financialMode: false,
+  })
+})
+
 const lsPrefixDxObservedInputTokens = 0
 const lsPrefixDxRunsAnalyzed = langSmithPrefixDiagnosticRoutes.reduce(
   (sum, route) => sum + route.runsAnalyzed,
@@ -634,6 +687,8 @@ export const langSmithPrefixDiagnosticReport: CachecatchReport = {
   },
   routes: langSmithPrefixDiagnosticAudits,
   findings: langSmithPrefixDiagnosticFindings,
+  rebuilds: lsPrefixDxRebuilds,
+  advice: lsPrefixDxAdvice,
   recommendedLayout: {
     stablePrefix: [
       "[system role and constraints]",
